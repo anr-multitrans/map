@@ -1,7 +1,3 @@
 /MapTR
 NuScenes/data
-NuScenes/nuscenes-devkit/docs
-NuScenes/nuscenes-devkit/.notebook
-NuScenes/nuscenes-devkit/setup
-NuScenes/nuscenes-devkit/python-sdk/nuimages
-NuScenes/nuscenes-devkit/python-sdk/tutorials
+NuScenes/nuscenes-devkit
