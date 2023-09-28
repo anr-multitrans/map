@@ -1,7 +1,9 @@
 
 /data
+
 NuScenes/nuscenes-devkit
 NuScenes/.notebook
+
 MapTR/ckpts
 MapTR/docs
 MapTR/figs
