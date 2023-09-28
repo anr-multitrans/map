@@ -3,5 +3,5 @@
 /data
 /MapPerturbation
 # *.pkl
-# /MapTR
+/MapTR
 /nuscenes-devkit
