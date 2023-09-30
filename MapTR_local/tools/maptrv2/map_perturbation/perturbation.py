@@ -716,10 +716,13 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
     patch_size = (patch_h, patch_w)
     vector_map = PerturbedVectorizedLocalMap(
         nusc_maps[location], map_explorer[location], patch_size)
+    
+    # the oranginal map
     map_anns = vector_map.gen_vectorized_samples(
         lidar2global_translation, lidar2global_rotation)
     info["annotation"] = map_anns
 
+    # the first perturbed map
     trans_args = {'add_ped': [1, None],  # add a ped_crossing in a road_segment
                   'del_ped': [1, None],  # delet a ped_crossing
                   # shift a ped_crossing in its road_segment
@@ -731,7 +734,6 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
                   # [rotate the map, the degree of the rotate range]
                   'rot_map': [1, 54]
                   }
-
     map_anns_tran = vector_map.gen_trans_vectorized_samples(
         lidar2global_translation, lidar2global_rotation, trans_args)
     info["annotation_1"] = map_anns_tran
