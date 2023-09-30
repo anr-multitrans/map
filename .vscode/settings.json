@@ -3,13 +3,12 @@
         "editor.defaultFormatter": "ms-python.autopep8"
     },
     "python.formatting.provider": "none",
-    "python.analysis.extraPaths": [
-        "./MapTR/mmdetection3d"
-    ],
+    // "python.analysis.extraPaths": [
+    //     "./MapTR_local/mmdetection3d",
+    //     ".MapTR_local/tools/maptrv2"
+    // ],
     // "python.analysis.extraPaths": [
     //     "./MapTR/mmdetection3d"
     // ],
-    // "python.analysis.extraPaths": [
-    //     "./NuScenes/nuscenes-devkit/python-sdk/nuscenes"
-    // ]
+    // "python.analysis.ext
 }

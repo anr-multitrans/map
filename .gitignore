@@ -2,6 +2,8 @@
 /.vscode
 /data
 /MapPerturbation
-# *.pkl
+*.pkl
+*.pyc
 /MapTR
+MapTR_local/tools/maptrv2/map_perturbation/old/
 /nuscenes-devkit
