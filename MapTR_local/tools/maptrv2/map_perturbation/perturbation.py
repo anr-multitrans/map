@@ -1,13 +1,13 @@
 import copy
+import os
 import random
-from typing import Dict, List
 
 import numpy as np
-from matplotlib import pyplot as plt
 from nuscenes.eval.common.utils import Quaternion, quaternion_yaw
 from nuscenes.map_expansion.map_api import NuScenesMapExplorer
 from shapely import affinity, ops
 from shapely.geometry import MultiLineString, MultiPolygon, Point, Polygon, box
+from visualization import RenderMap
 
 
 class MapTransform:
@@ -129,7 +129,7 @@ class PerturbedVectorizedLocalMap(object):
                               'boundary'],
                  line_classes=['road_divider', 'lane_divider'],
                  ped_crossing_classes=['ped_crossing'],
-                 contour_classes=['road_segment', 'lane', 'lane_connector']
+                 contour_classes=['road_segment', 'lane']  # 'lane_connector'
                  ):
         super().__init__()
         self.nusc_map = nusc_map
@@ -169,30 +169,34 @@ class PerturbedVectorizedLocalMap(object):
 
         map_dict = {'divider': [], 'ped_crossing': [],
                     'boundary': []}
-
+        geom = {}
         for vec_class in self.vec_classes:
             if vec_class == 'divider':
                 line_geom = self.get_map_geom(
                     patch_box, patch_angle, self.line_classes, trans_args)
                 line_instances_dict = self.line_geoms_to_instances(line_geom)
+                geom.update(line_instances_dict)
                 for line_type, instances in line_instances_dict.items():
                     for instance in instances:
                         map_dict[vec_class].append(np.array(instance.coords))
             elif vec_class == 'ped_crossing':
                 ped_geom = self.get_map_geom(
                     patch_box, patch_angle, self.ped_crossing_classes, trans_args)
+                geom.update(ped_geom)
                 ped_instance_list = self.ped_poly_geoms_to_instances(ped_geom)
                 for instance in ped_instance_list:
                     map_dict[vec_class].append(np.array(instance.coords))
             elif vec_class == 'boundary':
                 polygon_geom = self.get_map_geom(
                     patch_box, patch_angle, self.polygon_classes, trans_args)
+                geom.update(polygon_geom)
                 poly_bound_list = self.poly_geoms_to_instances(polygon_geom)
                 for instance in poly_bound_list:
                     map_dict[vec_class].append(np.array(instance.coords))
             else:
                 raise ValueError(f'WRONG vec_class: {vec_class}')
-        return map_dict
+        return {'map_dict': map_dict, 'map_geom': geom, 'patch_box': patch_box, 'patch_angle': patch_angle}
+        # return map_dict, geom, self.map_explorer.get_patch_coord(patch_box, patch_angle)
 
     def get_map_geom(self, patch_box, patch_angle, layer_names, trans_args=None):
         map_geom = {}
@@ -483,6 +487,18 @@ class PerturbParameters():
         self.rot_map = rot_map
 
 
+def perturb_map(vector_map, lidar2global_translation, lidar2global_rotation, trans_args, info, map_version, visual):
+
+    trans_dic = vector_map.gen_trans_vectorized_samples(
+        lidar2global_translation, lidar2global_rotation, trans_args)
+    info[map_version] = trans_dic['map_dict']
+
+    visual.render_map_mask(trans_dic['map_geom'], trans_dic['patch_box'], trans_dic['patch_angle'], list(
+        trans_dic['map_geom'].keys()), version=map_version)
+
+    return info
+
+
 def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
     lidar2ego = np.eye(4)
     lidar2ego[:3, :3] = Quaternion(info['lidar2ego_rotation']).rotation_matrix
@@ -505,50 +521,55 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
     vector_map = PerturbedVectorizedLocalMap(
         nusc_maps[location], map_explorer[location], patch_size)
 
+    save_path = os.path.join(
+        '/home/li/Documents/map/MapTR_local/tools/maptrv2/map_perturbation/visual', info['scene_token'], info['token'])
+    visual = RenderMap(info, vector_map.nusc_map, vector_map.map_explorer,
+                       switch=True, show=False, save=save_path)
+
     # the oranginal map
+    map_version = 'annotation'
     trans_args = PerturbParameters()
-    map_anns = vector_map.gen_trans_vectorized_samples(
-        lidar2global_translation, lidar2global_rotation, trans_args)
-    info["annotation"] = map_anns
+    info = perturb_map(vector_map, lidar2global_translation,
+                       lidar2global_rotation, trans_args, info, map_version, visual)
 
     # the first perturbed map
+    map_version = 'annotation_1'
     trans_args = PerturbParameters(del_ped=[1, 1],  # delet a ped_crossing
                                    del_lan=[1, 1])  # delete a lane
-    map_anns_tran = vector_map.gen_trans_vectorized_samples(
-        lidar2global_translation, lidar2global_rotation, trans_args)
-    info["annotation_1"] = map_anns_tran
+    info = perturb_map(vector_map, lidar2global_translation,
+                       lidar2global_rotation, trans_args, info, map_version, visual)
 
     # the second perturbed map
-    trans_args = PerturbParameters(del_lan_div=[1, 1],  # delete a lane_divier
-                                   del_lan=[1, 1])  # delete a lane
-    map_anns_tran = vector_map.gen_trans_vectorized_samples(
-        lidar2global_translation, lidar2global_rotation, trans_args)
-    info["annotation_2"] = map_anns_tran
+    map_version = 'annotation_2'
+    trans_args = PerturbParameters(del_lan_div=[1, 1],
+                                   del_lan=[1, 1])
+    info = perturb_map(vector_map, lidar2global_translation,
+                       lidar2global_rotation, trans_args, info, map_version, visual)
 
     # the third perturbed map
+    map_version = 'annotation_3'
     trans_args = PerturbParameters(del_lan=[1, 1],
                                    shi_map=[1, 0.2])
-    map_anns_tran = vector_map.gen_trans_vectorized_samples(
-        lidar2global_translation, lidar2global_rotation, trans_args)
-    info["annotation_3"] = map_anns_tran
+    info = perturb_map(vector_map, lidar2global_translation,
+                       lidar2global_rotation, trans_args, info, map_version, visual)
 
     # the fourth perturbed map
+    map_version = 'annotation_4'
     trans_args = PerturbParameters(add_ped=[1, 1],
                                    del_ped=[1, 2],
                                    del_lan_div=[1, 1],
                                    del_lan=[1, 1])
-    map_anns_tran = vector_map.gen_trans_vectorized_samples(
-        lidar2global_translation, lidar2global_rotation, trans_args)
-    info["annotation_4"] = map_anns_tran
+    info = perturb_map(vector_map, lidar2global_translation,
+                       lidar2global_rotation, trans_args, info, map_version, visual)
 
     # the fifth perturbed map
+    map_version = 'annotation_5'
     trans_args = PerturbParameters(add_ped=[1, 1],
                                    del_ped=[1, 2],
                                    del_lan_div=[1, 2],
                                    del_lan=[1, 1],
                                    shi_map=[1, 0.2])
-    map_anns_tran = vector_map.gen_trans_vectorized_samples(
-        lidar2global_translation, lidar2global_rotation, trans_args)
-    info["annotation_5"] = map_anns_tran
+    info = perturb_map(vector_map, lidar2global_translation,
+                       lidar2global_rotation, trans_args, info, map_version, visual)
 
     return info

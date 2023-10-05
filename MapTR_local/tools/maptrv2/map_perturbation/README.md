@@ -50,3 +50,17 @@ info["annotation_1"] = map_anns_tran
 
 ```
 The key in the trans_args() dictionary is the modification type, and the value is a list containing two elements [Boolean value: whether to perform this perturbation, variable type: additional perturbation parameters]
+
+# Visualization
+In the perturbation.py file, before the perturbation parameter setting block.
+
+- switch: whether to visualize
+- show: whether to display
+- save: save path. If not saving side set to None.
+
+```python
+save_path = os.path.join(
+    '/home/li/Documents/map/MapTR_local/tools/maptrv2/map_perturbation/visual', info['scene_token'], info['token'])
+visual = RenderMap(info, vector_map.nusc_map, vector_map.map_explorer,
+                    switch=True, show=False, save=save_path)
+```
