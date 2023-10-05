@@ -31,25 +31,15 @@ more parameters may be needed in future studies:
 Modify it in perturbation.py file.
 
 ## Modify the number of perturbed annotation versions
-In the function obtain_perturb_vectormap(), by adding and modifying trans_args(), you can create multiple annotation versions to add to info.
+In the function obtain_perturb_vectormap(), by setting the perturbation version name and perturbation parameters, you can create multiple annotation versions to add to info.
 ```python
-trans_args = {'add_ped': [1, None],  # add a ped_crossing in a road_segment
-                'del_ped': [1, None],  # delet a ped_crossing
-                # shift a ped_crossing in its road_segment #TODO
-                'shi_ped': [1, None],
-                'del_roa_div': [1, None],  # delete a road_divider
-                'del_lan_div': [1, None],  # delete a lane_divier
-                # [shift the map, the ratio of the length that the shift range does not exceed ]
-                'shi_map': [1, 0.3],
-                # [rotate the map, the degree of the rotation range]
-                'rot_map': [1, 54]
-                }
-map_anns_tran = vector_map.gen_trans_vectorized_samples(
-    lidar2global_translation, lidar2global_rotation, trans_args)
-info["annotation_1"] = map_anns_tran
-
+    map_version = 'annotation_1'
+    trans_args = PerturbParameters(del_ped=[1, 1],  # delet a ped_crossing
+                                   del_lan=[1, 1])  # delete a lane
+    info = perturb_map(vector_map, lidar2global_translation,
+                       lidar2global_rotation, trans_args, info, map_version, visual)
 ```
-The key in the trans_args() dictionary is the modification type, and the value is a list containing two elements [Boolean value: whether to perform this perturbation, variable type: additional perturbation parameters]
+The default parameters in the trans_args() class include all perturbation types, and value is a list containing two elements [Boolean value: whether to perform this perturbation, variable type: additional perturbation parameters]
 
 # Visualization
 In the perturbation.py file, before the perturbation parameter setting block.
