@@ -54,4 +54,4 @@ save_path = os.path.join(
 visual = RenderMap(info, vector_map.nusc_map, vector_map.map_explorer,
                     switch=True, show=False, save=save_path)
 ```
-![](MapTRV2Local/tools/maptrv2/map_perturbation/pics/annotation.png)
+![](./pics/annotation.png)
