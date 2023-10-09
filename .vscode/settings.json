@@ -10,5 +10,7 @@
     // "python.analysis.extraPaths": [
     //     "./MapTR/mmdetection3d"
     // ],
-    // "python.analysis.ext
+    "python.analysis.extraPaths": [
+        ".MapTRV2Local/projects"
+    ],
 }

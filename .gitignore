@@ -5,7 +5,8 @@
 *.pkl
 *.pyc
 /MapTR
-MapTR_local/tools/maptrv2/map_perturbation/old/
-MapTR_local/tools/maptrv2/map_perturbation/__pycache__
+MapTRV2Local/tools/maptrv2/map_perturbation/old/
+MapTRV2Local/tools/maptrv2/map_perturbation/__pycache__
 /nuscenes-devkit
-MapTR_local/tools/maptrv2/map_perturbation/visual
+MapTRV2Local/tools/maptrv2/map_perturbation/visual
+/Papers
