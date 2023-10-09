@@ -11,7 +11,6 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Arrow, Rectangle
 from nuscenes.map_expansion.bitmap import BitMap
 from nuscenes.map_expansion.map_api import NuScenesMap, NuScenesMapExplorer
-
 # Recommended style to use as the plots will show grids.
 plt.style.use('seaborn-whitegrid')
 
@@ -30,7 +29,6 @@ class RenderMap:
         :param color_map: Color map.
         """
         # Mutable default argument.
-        # if color_map is None:
         self.color_map = dict(drivable_area='#a6cee3',
                               road_segment='#1f78b4',
                               road_block='#b2df8a',
@@ -43,16 +41,15 @@ class RenderMap:
                               lane_divider='#6a3d9a',
                               traffic_light='#7e772e')
 
+        self.colors_plt = {'divider': 'r',
+                           'ped_crossing': 'b', 'boundary': 'g'}
+
         self.info = info
         self.map_api = map_api
         self.map_exploer = map_exploer
         self.switch = switch
         self.show = show
         self.save = save
-
-        # self.color_map = dict(boundary='#1f78b4',
-        #                       ped_crossing='#fb9a99',
-        #                       divider='#cab2d6')
 
         self.canvas_max_x = self.map_api.canvas_edge[0]
         self.canvas_min_x = 0
@@ -139,7 +136,6 @@ class RenderMap:
         :param alpha: The opacity of the layer to be rendered.
         :param tokens: Optional list of tokens to render. None means all tokens are rendered.
         """
-        # if layer_name in self.map_api.lookup_polygon_layers:
         if layer_name in self.map_api.non_geometric_polygon_layers:
             self._render_polygon_layer(map_anns, ax, layer_name, alpha, tokens)
         elif layer_name in self.map_api.non_geometric_line_layers:
@@ -323,6 +319,34 @@ class RenderMap:
             if self.save is not None:
                 self.check_path(self.save)
                 plt.savefig(os.path.join(self.save, version))
+
+            if self.show:
+                plt.show()
+
+            plt.close()
+
+    def vis_contours(self, contours, patch_box, map_version):
+        if self.switch:
+
+            plt.figure(figsize=(2, 4))
+            plt.xlim(-patch_box[3]/2, patch_box[3]/2)
+            plt.ylim(-patch_box[2]/2, patch_box[2]/2)
+            plt.axis('off')
+            for pred_label_3d in contours.keys():
+                if len(contours[pred_label_3d]):
+                    for pred_pts_3d in contours[pred_label_3d]:
+                        pts_x = pred_pts_3d[:, 0]
+                        pts_y = pred_pts_3d[:, 1]
+                        plt.plot(
+                            pts_x, pts_y, color=self.colors_plt[pred_label_3d], linewidth=1, alpha=0.8, zorder=-1)
+                        plt.scatter(
+                            pts_x, pts_y, color=self.colors_plt[pred_label_3d], s=1, alpha=0.8, zorder=-1)
+
+            if self.save is not None:
+                self.check_path(self.save)
+                map_path = os.path.join(self.save, map_version)
+                plt.savefig(map_path, bbox_inches='tight',
+                            format='png', dpi=1200)
 
             if self.show:
                 plt.show()

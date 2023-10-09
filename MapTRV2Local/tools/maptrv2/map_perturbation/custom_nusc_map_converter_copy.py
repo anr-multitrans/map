@@ -44,23 +44,12 @@ class CNuScenesMapExplorer(NuScenesMapExplorer):
         centerline_dict = dict()
         for record in records:
             if record['polygon_token'] is None:
-                # import ipdb
-                # ipdb.set_trace()
                 continue
             polygon = self.map_api.extract_polygon(record['polygon_token'])
 
-            # if polygon.intersects(patch) or polygon.within(patch):
-            #     if not polygon.is_valid:
-            #         print('within: {}, intersect: {}'.format(polygon.within(patch), polygon.intersects(patch)))
-            #         print('polygon token {} is_valid: {}'.format(record['polygon_token'], polygon.is_valid))
-
-            # polygon = polygon.buffer(0)
-
             if polygon.is_valid:
-                # if within or intersect :
 
                 new_polygon = polygon.intersection(patch)
-                # new_polygon = polygon
 
                 if not new_polygon.is_empty:
                     centerline = self.map_api.discretize_lanes(
@@ -77,9 +66,6 @@ class CNuScenesMapExplorer(NuScenesMapExplorer):
                             to_patch_coord(
                                 centerline, patch_angle, patch_x, patch_y)
 
-                        # centerline.coords = np.array(centerline.coords).round(3)
-                        # if centerline.geom_type != 'LineString':
-                        # import ipdb;ipdb.set_trace()
                         record_dict = dict(
                             centerline=centerline,
                             token=record['token'],
@@ -328,7 +314,6 @@ def _fill_trainval_infos(nusc,
                 break
         info['sweeps'] = sweeps
         # obtain annotation
-        # import ipdb;ipdb.set_trace()
 
         info = obtain_perturb_vectormap(
             nusc_maps, map_explorer, info, point_cloud_range)

@@ -46,7 +46,7 @@ class MapTransform:
             lay_record = self.map_explorer.map_api.get(layer, lay_token)
             polygon = self.map_explorer.map_api.extract_polygon(
                 lay_record['polygon_token'])
-            # plt.plot(*polygon.exterior.xy)
+            
             if polygon.is_valid:
                 if lay_token == token:
                     if rotate:
@@ -58,8 +58,6 @@ class MapTransform:
                     if shift != [0, 0]:
                         polygon = affinity.translate(
                             polygon, shift[0], shift[1])
-
-                    # plt.plot(*polygon.exterior.xy)
 
                     # Each pedestrian crossing record has to be on a road segment.
                     if layer == 'ped_crossing':
@@ -163,7 +161,6 @@ class PerturbedVectorizedLocalMap(object):
             # Rotate instantly within a certain degrees
             patch_angle = quaternion_yaw(
                 rotation) / np.pi * 180 + random.randint(-trans_args.rot_map[1], trans_args.rot_map[1])
-            # print('patch_box is shiffted (%d, %d) and rotated %d degree'%(trans_args['patch_args'][0][1][0], trans_args['patch_args'][0][1][1], trans_args['patch_args'][0][0]))
         else:
             patch_angle = quaternion_yaw(rotation) / np.pi * 180
 
@@ -497,8 +494,8 @@ def perturb_map(vector_map, lidar2global_translation, lidar2global_rotation, tra
         lidar2global_translation, lidar2global_rotation, trans_args)
     info[map_version] = trans_dic['map_dict']
 
-    visual.render_map_mask(trans_dic['map_geom'], trans_dic['patch_box'], trans_dic['patch_angle'], list(
-        trans_dic['map_geom'].keys()), version=map_version)
+    visual.vis_contours(trans_dic['map_dict'],
+                        trans_dic['patch_box'], map_version)
 
     return info
 
@@ -526,9 +523,9 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
         nusc_maps[location], map_explorer[location], patch_size)
 
     save_path = os.path.join(
-        '/home/li/Documents/map/MapTR_local/tools/maptrv2/map_perturbation/visual', info['scene_token'], info['token'])
+        '/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual', info['scene_token'], info['token'])
     visual = RenderMap(info, vector_map.nusc_map, vector_map.map_explorer,
-                       switch=False, show=False, save=save_path)
+                       switch=True, show=False, save=save_path)
 
     # the oranginal map
     map_version = 'annotation'
