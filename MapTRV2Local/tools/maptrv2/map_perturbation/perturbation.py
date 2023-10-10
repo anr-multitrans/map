@@ -46,7 +46,7 @@ class MapTransform:
             lay_record = self.map_explorer.map_api.get(layer, lay_token)
             polygon = self.map_explorer.map_api.extract_polygon(
                 lay_record['polygon_token'])
-            
+
             if polygon.is_valid:
                 if lay_token == token:
                     if rotate:
@@ -166,10 +166,12 @@ class PerturbedVectorizedLocalMap(object):
 
         map_dict = {'divider': [], 'ped_crossing': [],
                     'boundary': []}
+        map_perturb = {'divider': [], 'ped_crossing': [],
+                       'boundary': []}
         geom = {}
         for vec_class in self.vec_classes:
             if vec_class == 'divider':
-                line_geom = self.get_map_geom(
+                line_geom, map_perturb[vec_class] = self.get_map_geom(
                     patch_box, patch_angle, self.line_classes, trans_args)
                 line_instances_dict = self.line_geoms_to_instances(line_geom)
                 geom.update(line_instances_dict)
@@ -177,14 +179,14 @@ class PerturbedVectorizedLocalMap(object):
                     for instance in instances:
                         map_dict[vec_class].append(np.array(instance.coords))
             elif vec_class == 'ped_crossing':
-                ped_geom = self.get_map_geom(
+                ped_geom, map_perturb[vec_class] = self.get_map_geom(
                     patch_box, patch_angle, self.ped_crossing_classes, trans_args)
                 geom.update(ped_geom)
                 ped_instance_list = self.ped_poly_geoms_to_instances(ped_geom)
                 for instance in ped_instance_list:
                     map_dict[vec_class].append(np.array(instance.coords))
             elif vec_class == 'boundary':
-                polygon_geom = self.get_map_geom(
+                polygon_geom, map_perturb[vec_class] = self.get_map_geom(
                     patch_box, patch_angle, self.polygon_classes, trans_args)
                 geom.update(polygon_geom)
                 poly_bound_list = self.poly_geoms_to_instances(polygon_geom)
@@ -193,35 +195,56 @@ class PerturbedVectorizedLocalMap(object):
             else:
                 raise ValueError(f'WRONG vec_class: {vec_class}')
 
-        return {'map_dict': map_dict, 'map_geom': geom, 'patch_box': patch_box, 'patch_angle': patch_angle}
+        return {'map_dict': map_dict, 'map_geom': geom, 'patch_box': patch_box, 'patch_angle': patch_angle, 'map_perturb': map_perturb}
 
     def get_map_geom(self, patch_box, patch_angle, layer_names, trans_args=None):
         map_geom = {}
+        map_perturb = []
         for layer_name in layer_names:
             if layer_name in self.line_classes:
-                geoms = self.get_trans_divider_line(
+                geoms, map_pt = self.get_trans_divider_line(
                     patch_box, patch_angle, layer_name, trans_args)
                 map_geom[layer_name] = geoms
             elif layer_name in self.polygon_classes:
-                geoms = self.get_trans_contour_line(
-                    patch_box, patch_angle, layer_name, trans_args)
+                geoms, map_pt = self.get_trans_contour_line(
+                    patch_box, patch_angle, layer_name, trans_args)  # TODO
                 map_geom[layer_name] = geoms
             elif layer_name in self.ped_crossing_classes:
-                geoms = self.get_trans_ped_crossing_line(
+                geoms, map_pt = self.get_trans_ped_crossing_line(
                     patch_box, patch_angle, trans_args)
                 map_geom[layer_name] = geoms
-        return map_geom
+            map_perturb.append(map_pt)
+
+        return map_geom, map_perturb
+
+    def valid_polygon(self, polygon, patch, patch_angle, patch_x, patch_y, polygon_list):
+        valid = False
+        if polygon.is_valid:
+            new_polygon = polygon.intersection(patch)
+            if not new_polygon.is_empty:
+                new_polygon = affinity.rotate(new_polygon, -patch_angle,
+                                              origin=(patch_x, patch_y), use_radians=False)
+                new_polygon = affinity.affine_transform(new_polygon,
+                                                        [1.0, 0.0, 0.0, 1.0, -patch_x, -patch_y])
+                if new_polygon.geom_type == 'Polygon':
+                    new_polygon = MultiPolygon([new_polygon])
+                polygon_list.append(new_polygon)
+                valid = True
+
+        return polygon_list, valid
 
     def valid_line(self, line, patch, patch_angle, patch_x, patch_y, line_list):
         new_line = line.intersection(patch)
+        valid = False
         if not new_line.is_empty:
             new_line = affinity.rotate(
                 new_line, -patch_angle, origin=(patch_x, patch_y), use_radians=False)
             new_line = affinity.affine_transform(new_line,
                                                  [1.0, 0.0, 0.0, 1.0, -patch_x, -patch_y])
             line_list.append(new_line)
+            valid = True
 
-        return line_list
+        return line_list, valid
 
     def get_trans_divider_line(self, patch_box, patch_angle, layer_name, trans_args=None):
         # 'road_divider', 'lane_divider', 'traffic_light'
@@ -235,10 +258,14 @@ class PerturbedVectorizedLocalMap(object):
         records = self.map_explorer.map_api.get_records_in_patch(
             patch_coords, [layer_name])[layer_name]
 
+        ind_list = [i for i in range(len(records))]
+        map_pt = [None]*len(records)
         if trans_args.del_lan_div[0]:
             for _ in range(trans_args.del_lan_div[1]):
-                if len(records):
-                    records.pop(random.randrange(len(records)))
+                if len(ind_list):
+                    ind = ind_list.pop(random.randrange(len(ind_list)))
+                    records[ind] = None
+                    map_pt[ind] = -1
 
         line_list = []
         patch_x = patch_box[0]
@@ -246,88 +273,64 @@ class PerturbedVectorizedLocalMap(object):
 
         patch = self.map_explorer.get_patch_coord(patch_box, patch_angle)
 
-        for token in records:
-            record = self.map_explorer.map_api.get(layer_name, token)
-            line = self.map_explorer.map_api.extract_line(record['line_token'])
+        for ind in ind_list:
+            record = self.map_explorer.map_api.get(layer_name, records[ind])
+            line = self.map_explorer.map_api.extract_line(
+                record['line_token'])
             if line.is_empty:  # Skip lines without nodes.
                 continue
 
-            line_list = self.valid_line(
+            line_list, valid = self.valid_line(
                 line, patch, patch_angle, patch_x, patch_y, line_list)
+            if valid:
+                map_pt[ind] = 0
 
-        return line_list
+        return line_list, map_pt
 
     def get_trans_contour_line(self, patch_box, patch_angle, layer_name, trans_args=None):
         # 'road_segment', 'lane'
         if layer_name not in self.map_explorer.map_api.lookup_polygon_layers:
             raise ValueError('{} is not a polygonal layer'.format(layer_name))
 
+        patch_coords = self.map_trans.patch_box_2_coords(patch_box)
+        records = self.map_explorer.map_api.get_records_in_patch(
+            patch_coords, [layer_name])[layer_name]
+
+        ind_list = [i for i in range(len(records))]
+        map_pt = [None]*len(records)
+
+        polygon_list = []
         patch_x = patch_box[0]
         patch_y = patch_box[1]
 
         patch = self.map_explorer.get_patch_coord(patch_box, patch_angle)
 
-        records = getattr(self.map_explorer.map_api, layer_name)
+        for ind in ind_list:
+            record = self.map_explorer.map_api.get(layer_name, records[ind])
+            polygon = self.map_explorer.map_api.extract_polygon(
+                record['polygon_token'])
 
-        polygon_list = []
-        if layer_name == 'drivable_area':
-            for record in records:
-                polygons = [self.map_explorer.map_api.extract_polygon(
-                    polygon_token) for polygon_token in record['polygon_tokens']]
+            polygon_list, valid = self.valid_polygon(
+                polygon, patch, patch_angle, patch_x, patch_y, polygon_list)
+            if valid:
+                map_pt[ind] = 0
 
-                for polygon in polygons:
-                    new_polygon = polygon.intersection(patch)
-                    if not new_polygon.is_empty:
-                        new_polygon = affinity.rotate(new_polygon, -patch_angle,
-                                                      origin=(patch_x, patch_y), use_radians=False)
-                        new_polygon = affinity.affine_transform(new_polygon,
-                                                                [1.0, 0.0, 0.0, 1.0, -patch_x, -patch_y])
-                        if new_polygon.geom_type == 'Polygon':
-                            new_polygon = MultiPolygon([new_polygon])
-                        polygon_list.append(new_polygon)
+        return polygon_list, map_pt
 
-        else:
-            for record in records:
-                polygon = self.map_explorer.map_api.extract_polygon(
-                    record['polygon_token'])
-
-                if polygon.is_valid:
-                    new_polygon = polygon.intersection(patch)
-                    if not new_polygon.is_empty:
-                        new_polygon = affinity.rotate(new_polygon, -patch_angle,
-                                                      origin=(patch_x, patch_y), use_radians=False)
-                        new_polygon = affinity.affine_transform(new_polygon,
-                                                                [1.0, 0.0, 0.0, 1.0, -patch_x, -patch_y])
-                        if new_polygon.geom_type == 'Polygon':
-                            new_polygon = MultiPolygon([new_polygon])
-                        polygon_list.append(new_polygon)
-
-        return polygon_list
-
-    def valid_polygon(self, polygon, patch, patch_angle, patch_x, patch_y, polygon_list):
-        if polygon.is_valid:
-            new_polygon = polygon.intersection(patch)
-            if not new_polygon.is_empty:
-                new_polygon = affinity.rotate(new_polygon, -patch_angle,
-                                              origin=(patch_x, patch_y), use_radians=False)
-                new_polygon = affinity.affine_transform(new_polygon,
-                                                        [1.0, 0.0, 0.0, 1.0, -patch_x, -patch_y])
-                if new_polygon.geom_type == 'Polygon':
-                    new_polygon = MultiPolygon([new_polygon])
-                polygon_list.append(new_polygon)
-
-        return polygon_list
-
-    def get_trans_ped_crossing_line(self, patch_box, patch_angle, trans_args):
+    def get_trans_ped_crossing_line(self, patch_box, patch_angle, trans_args=None):
 
         patch_coords = self.map_trans.patch_box_2_coords(patch_box)
         records = self.map_explorer.map_api.get_records_in_patch(
             patch_coords, ['ped_crossing'])['ped_crossing']
 
+        ind_list = [i for i in range(len(records))]
+        map_pt = [None]*len(records)
         if trans_args.del_ped[0]:
             for _ in range(trans_args.del_ped[1]):
-                if len(records):
-                    records.pop(random.randrange(len(records)))
+                if len(ind_list):
+                    ind = ind_list.pop(random.randrange(len(ind_list)))
+                    records[ind] = None
+                    map_pt[ind] = -1
 
         polygon_list = []
         patch_x = patch_box[0]
@@ -337,21 +340,27 @@ class PerturbedVectorizedLocalMap(object):
 
         if trans_args.shi_ped[0]:
             for _ in range(trans_args.del_ped[1]):
-                if len(records):
-                    token = records.pop(random.randrange(len(records)))
+                if len(ind_list):
+                    ind = ind_list.pop(random.randrange(len(ind_list)))
+                    token = records[ind]
                     record = self.map_explorer.map_api.get(
                         'ped_crossing', token)
                     polygon = self.map_trans.creat_ped_polygon(
                         record['road_segment_token'])
-                    polygon_list = self.valid_polygon(
+                    polygon_list, valid = self.valid_polygon(
                         polygon, patch, patch_angle, patch_x, patch_y, polygon_list)
+                    if valid:
+                        map_pt[ind] = 2
 
-        for token in records:
-            record = self.map_explorer.map_api.get('ped_crossing', token)
+        for ind in ind_list:
+            record = self.map_explorer.map_api.get(
+                'ped_crossing', records[ind])
             polygon = self.map_explorer.map_api.extract_polygon(
                 record['polygon_token'])
-            polygon_list = self.valid_polygon(
+            polygon_list, valid = self.valid_polygon(
                 polygon, patch, patch_angle, patch_x, patch_y, polygon_list)
+            if valid:
+                map_pt[ind] = 0
 
         if trans_args.add_ped[0]:
             for _ in range(trans_args.add_ped[1]):
@@ -360,10 +369,12 @@ class PerturbedVectorizedLocalMap(object):
                 if len(rod_seg_records):
                     record = random.choice(rod_seg_records)
                     polygon = self.map_trans.creat_ped_polygon(record)
-                    polygon_list = self.valid_polygon(
+                    polygon_list, valid = self.valid_polygon(
                         polygon, patch, patch_angle, patch_x, patch_y, polygon_list)
+                    if valid:
+                        map_pt.append(1)
 
-        return polygon_list
+        return polygon_list, map_pt
 
     def line_geoms_to_instances(self, line_geom):
         line_instances_dict = dict()
@@ -488,11 +499,59 @@ class PerturbParameters():
         self.rot_map = rot_map
 
 
+def re_index(lis_trans, start_ind):
+    ind = start_ind
+    ind_list = []
+    for tran in lis_trans:
+        if tran in [None, -1]:
+            ind_list.append(None)
+        else:
+            ind_list.append(ind)
+            ind += 1
+
+    return ind_list
+
+
+def map_correspondence(ann_org_pert, ann_pt_pert, map_version):
+    corr_dic = {}
+    for layers in ['divider', 'ped_crossing']:  # TODO Boundaries are more complicated
+        layers_org = ann_org_pert[layers]
+        layers_pert = ann_pt_pert[layers]
+
+        pt_corr_ind = []
+        start_ind = 0
+        for ind, lis in enumerate(layers_pert):
+            layer_org_ind_list = re_index(layers_org[ind], start_ind)
+            start_ind = len(layer_org_ind_list)
+
+            for id, tran in enumerate(lis):
+                if tran in [None, -1]:
+                    continue
+
+                if id < len(layer_org_ind_list):
+                    pt_corr_ind.append(layer_org_ind_list[id])
+                else:
+                    pt_corr_ind.append(-1)
+
+        corr_dic[layers] = pt_corr_ind
+
+    return corr_dic
+
+
 def perturb_map(vector_map, lidar2global_translation, lidar2global_rotation, trans_args, info, map_version, visual):
 
     trans_dic = vector_map.gen_trans_vectorized_samples(
         lidar2global_translation, lidar2global_rotation, trans_args)
     info[map_version] = trans_dic['map_dict']
+
+    if '_' in map_version:
+        corr_dic = map_correspondence(
+            info['annotation_perturb'], trans_dic['map_perturb'], map_version)
+        corr_dic['boundary'] = [i for i in range(
+            len(info['annotation']['boundary']))]
+        info[map_version+'_correspondence'] = corr_dic
+    else:
+        info[map_version+'_perturb'] = trans_dic['map_perturb']
 
     visual.vis_contours(trans_dic['map_dict'],
                         trans_dic['patch_box'], map_version)
@@ -525,7 +584,7 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
     save_path = os.path.join(
         '/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual', info['scene_token'], info['token'])
     visual = RenderMap(info, vector_map.nusc_map, vector_map.map_explorer,
-                       switch=True, show=False, save=save_path)
+                       switch=False, show=False, save=save_path)
 
     # the oranginal map
     map_version = 'annotation'
@@ -573,5 +632,7 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
                                    shi_map=[1, 0.2])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
+
+    info.pop('annotation_perturb')
 
     return info
