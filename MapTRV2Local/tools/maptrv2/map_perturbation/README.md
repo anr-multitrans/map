@@ -41,6 +41,10 @@ In the function obtain_perturb_vectormap(), by setting the perturbation version 
 ```
 The default parameters in the trans_args() class include all perturbation types, and value is a list containing two elements [Boolean value: whether to perform this perturbation, variable type: additional perturbation parameters]
 
+## The result
+Each sample in each scene, corresponding to the annotation, has multiple perturbation versions **annotation_\*** and its corresponding list of the original image **annotation_*_correspondence** .
+![](./pics/perturbation_results.png)
+
 # Visualization
 In the perturbation.py file, before the perturbation parameter setting block.
 
