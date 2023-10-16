@@ -646,7 +646,8 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
 
     vector_map = PerturbedVectorizedLocalMap(
         nusc_maps[location], map_explorer[location], patch_size)
-    trans_args = PerturbParameters()
+    trans_args = PerturbParameters(
+        visual=True, vis_show=False, vis_path='/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual')
     visual = RenderMap(info, vector_map, trans_args)
 
     # ------peturbation------

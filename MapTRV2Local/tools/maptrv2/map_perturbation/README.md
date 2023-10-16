@@ -48,14 +48,13 @@ Each sample in each scene, corresponding to the annotation, has multiple perturb
 # Visualization
 In the perturbation.py file, before the perturbation parameter setting block.
 
-- switch: whether to visualize
-- show: whether to display
-- save: save path. If not saving side set to None.
+- visual: whether to visualize
+- vis_show: whether to display
+- vis_path: save path. If not saving side set to None.
 
 ```python
-save_path = os.path.join(
-    '/home/li/Documents/map/MapTR_local/tools/maptrv2/map_perturbation/visual', info['scene_token'], info['token'])
-visual = RenderMap(info, vector_map.nusc_map, vector_map.map_explorer,
-                    switch=True, show=False, save=save_path)
+trans_args = PerturbParameters(
+    visual=True, vis_show=False, vis_path='/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual')
+visual = RenderMap(info, vector_map, trans_args)
 ```
 ![](./pics/annotation.png)
