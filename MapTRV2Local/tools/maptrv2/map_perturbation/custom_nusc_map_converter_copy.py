@@ -443,7 +443,7 @@ parser.add_argument(
 parser.add_argument(
     '--out-dir',
     type=str,
-    default='/home/li/Documents/map/MapTR_local/tools/maptrv2/map_perturbation/output',
+    default='/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/output',
     required=False,
     help='name of info pkl')
 parser.add_argument('--extra-tag', type=str, default='nuscenes')
@@ -459,6 +459,7 @@ if __name__ == '__main__':
     #     info_prefix=args.extra_tag,
     #     version=train_version,
     #     max_sweeps=args.max_sweeps)
+
     # test_version = f'{args.version}-test'
     # create_nuscenes_infos(
     #     root_path=args.root_path,

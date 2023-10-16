@@ -19,11 +19,8 @@ class RenderMap:
 
     def __init__(self,
                  info,
-                 map_api: NuScenesMap,
-                 map_exploer: NuScenesMapExplorer,
-                 switch=False,
-                 show=False,
-                 save=None):
+                 vector_map,
+                 trans_args):
         """
         :param map_api: NuScenesMap database class.
         :param color_map: Color map.
@@ -45,11 +42,11 @@ class RenderMap:
                            'ped_crossing': 'b', 'boundary': 'g'}
 
         self.info = info
-        self.map_api = map_api
-        self.map_exploer = map_exploer
-        self.switch = switch
-        self.show = show
-        self.save = save
+        self.map_api = vector_map.nusc_map
+        self.map_exploer = vector_map.map_explorer
+        self.switch = trans_args.visual
+        self.show = trans_args.vis_show
+        self.save = os.path.join(trans_args.vis_path, info['scene_token'], info['token'])
 
         self.canvas_max_x = self.map_api.canvas_edge[0]
         self.canvas_min_x = 0
@@ -344,7 +341,7 @@ class RenderMap:
 
             if self.save is not None:
                 self.check_path(self.save)
-                map_path = os.path.join(self.save, map_version)
+                map_path = os.path.join(self.save, map_version+'.png')
                 plt.savefig(map_path, bbox_inches='tight',
                             format='png', dpi=1200)
 

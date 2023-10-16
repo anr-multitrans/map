@@ -10,3 +10,5 @@ MapTRV2Local/tools/maptrv2/map_perturbation/__pycache__
 /nuscenes-devkit
 MapTRV2Local/tools/maptrv2/map_perturbation/visual
 /Papers
+MapTRV2Local/tools/maptrv2/map_perturbation/output
+MapTRV2Local/tools/maptrv2/map_perturbation/deformation.py
