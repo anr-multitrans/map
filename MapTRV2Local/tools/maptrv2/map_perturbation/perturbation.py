@@ -572,7 +572,8 @@ class PerturbParameters():
                  sca_pat=[0, 1, [1, 1]],  # scale the patch
                  ske_pat=[0, 1, [0, 0, (0, 0)]],  # skew the patch
                  shi_pat=[0, 1, [0, 0]],  # translate: shift the patch
-                 # deformation the patch, Inclination amplitude [-Max_r Max_r] int
+                 # deformation the patch
+                 # Horizontal, Vertical, and Inclination distortion amplitude
                  def_pat=[0, 1, [0, 0, 0]],
                  # visulization
                  vis_path='/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual',
