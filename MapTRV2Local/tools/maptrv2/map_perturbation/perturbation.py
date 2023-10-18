@@ -1,12 +1,11 @@
 import math
 import random
 from matplotlib import pyplot as plt
-
 import numpy as np
 from nuscenes.eval.common.utils import Quaternion, quaternion_yaw
 from nuscenes.map_expansion.map_api import NuScenesMapExplorer
 from shapely import affinity, ops
-from shapely.geometry import MultiLineString, MultiPolygon, Point, Polygon, box
+from shapely.geometry import MultiLineString, MultiPolygon, Point, Polygon, box, LineString
 from visualization import RenderMap
 
 
@@ -17,20 +16,16 @@ class MapTransform:
         self.patch_angle = 0
 
     def patch_coords_2_box(self, coords):
-
         box = ((coords[0] + coords[2])/2, (coords[1] + coords[3]
                                            )/2, coords[3] - coords[1], coords[2] - coords[0])
-
         return box
 
     def patch_box_2_coords(self, box):
-
         coors = (box[0] - box[3]/2, box[1] - box[2]/2,
                  box[0] + box[3]/2, box[1] + box[2]/2)
 
         return coors
 
-    # rotate=0, scale=[1, 1], skew=[0, 0, 'center'], shift=[0, 0], transform=[1, 0, 0, 1, 0, 0])
     def transfor_patch(self, instance_list, correspondence_list, patch_box, patch_angle, args):
         for key in instance_list.keys():
             if len(instance_list[key]):
@@ -90,13 +85,68 @@ class MapTransform:
 
         return new_polygon
 
+    def creat_boundray(self, boundary, patch_box):
+        center_point = boundary.interpolate(boundary.lenth / 2)
+        c = center_point.buffer(2.5).boundary
+        bi = c.intersection(boundary)
+
+        if len(bi.geom) < 2:
+            pt_1 = boundary.coords[0]
+            pt_2 = boundary.coords[-1]
+        else:
+            pt_1 = bi.geom[0]
+            pt_2 = bi.geom[-1]
+
+        x = center_point[0]
+        y = center_point[1]
+        edges_distance = [x+15, 15-x, y+30, 30-y]   # left, right, down, up
+        ind = edges_distance.index(min[edges_distance])
+
+        r_x = random.uniform(-12.5, 12.5)
+        r_y = random.uniform(-27.5, 27.5)
+        rand_point_on_edges = [[(-15, r_y-2.5), (-15, r_y+2.5)], [(15, r_y-2.5), (15, r_y+2.5)], [
+            (r_x-2.5, -30), (r_x+2.5, -30)], [(r_x-2.5, 30), (r_x+2.5, 30)]]
+
+        ed_pt_1 = rand_point_on_edges[ind][0]
+        ed_pt_2 = rand_point_on_edges[ind][1]
+
+        new_b_1 = LineString(ed_pt_1, pt_1)
+        new_b_2 = LineString(ed_pt_2, pt_2)
+
+        if new_b_1.intersects(new_b_2):
+            new_b_1 = LineString(ed_pt_1, pt_2)
+            new_b_2 = LineString(ed_pt_2, pt_1)
+
+        n_p_1 = ops.nearest_points(boundary, pt_1)
+        n_p_2 = ops.nearest_points(boundary, pt_2)
+
+        bou_1 = []
+        bou_2 = []
+        for ind, coord in enumerate(boundary.coords):
+            bou_1.append(coord)
+
+            if coord == n_p_1:
+                bou_1.append(pt_1)
+                bou_2.append(pt_2)
+                if ind+1 < len(boundary.coords):
+                    bou_2.append(boundary.coords[ind+1:])
+                return bou_1, bou_2, new_b_1, new_b_2
+
+            if coord == n_p_2:
+                bou_1.append(pt_2)
+                bou_2.append(pt_1)
+                if ind+1 < len(boundary.coords):
+                    bou_2.append(boundary.coords[ind+1:])
+                return bou_1, bou_2, new_b_1, new_b_2
+
     def show_img(self, X):
         plt.imshow(X, interpolation='nearest')
         plt.show()
         plt.close()
 
-    def delete_layers(self, instance_list, correspondence_list, layer_name, del_args):
-        for _ in range(del_args[1]):
+    def delete_layers(self, instance_list, correspondence_list, len_dict, layer_name, args):
+        times = math.ceil(len_dict[layer_name] * args[1])
+        for _ in range(times):
             if len(instance_list[layer_name]):
                 ind = random.randrange(len(instance_list[layer_name]))
                 instance_list[layer_name].pop(ind)
@@ -104,40 +154,87 @@ class MapTransform:
 
         return instance_list, correspondence_list
 
-    def shift_layers(self, instance_list, correspondence_list, layer_name, shi_args,  patch_box, patch_angle):
-        for _ in range(shi_args[1]):
+    def shift_layers(self, instance_list, correspondence_list, len_dict, layer_name, args,  patch_box, patch_angle):
+        times = math.ceil(len_dict[layer_name] * args[1])
+        for _ in range(times):
             if len(instance_list[layer_name]):
                 ind = random.randrange(len(instance_list[layer_name]))
 
                 geom = affinity.translate(
-                    instance_list[layer_name][ind], shi_args[2][0], shi_args[2][1])
+                    instance_list[layer_name][ind], args[2][0], args[2][1])
                 geom = self.valid_geom(geom, patch_box, patch_angle)
                 if geom is None:
-                    instance_list['ped_crossing'].pop(ind)
-                    correspondence_list['ped_crossing'].pop(ind)
+                    instance_list[layer_name].pop(ind)
+                    correspondence_list[layer_name].pop(ind)
                 else:
                     instance_list[layer_name][ind] = geom
 
         return instance_list, correspondence_list
 
-    def valid_geom(self, geom,  patch_box, patch_angle):
-        patch = self.map_explorer.get_patch_coord(patch_box, patch_angle)
-        new_geom = geom.intersection(patch)
-        if not new_geom.is_empty:
-            new_geom = affinity.rotate(
-                new_geom, patch_angle, origin=(patch_box[0], patch_box[1]), use_radians=False)
-            new_geom = affinity.affine_transform(new_geom,
-                                                 [1.0, 0.0, 0.0, 1.0, -patch_box[0], -patch_box[1]])
+    def add_layers(self, instance_list, correspondence_list, len_dict, layer_name, args, patch_box, patch_angle):
+        times = math.ceil(len_dict[layer_name] * args[1])
+        if times == 0:
+            times = 1
 
-            if new_polygon.geom_type == 'Polygon':
-                new_polygon = MultiPolygon([new_polygon])
+        if layer_name == 'ped_crossing':
+            patch_coords = self.patch_box_2_coords(patch_box)
+            road_seg_records = self.map_explorer.map_api.get_records_in_patch(
+                patch_coords, ['road_segment'])['road_segment']
+            if len(road_seg_records):
+                for _ in range(times):
+                    new_geom_v = None
+                    while new_geom_v is None:
+                        new_geom = self.creat_ped_polygon(
+                            random.choice(road_seg_records))
+                        new_geom_v = self.valid_geom(
+                            new_geom, patch_box, patch_angle)
+                        if new_geom_v is not None:
+                            if new_geom_v.boundary.geom_type == 'MultiLineString':
+                                instance_list[layer_name].append(
+                                    ops.linemerge(new_geom_v.boundary))
+                            else:
+                                instance_list[layer_name].append(
+                                    new_geom_v.boundary)
+
+                            correspondence_list[layer_name].append(-1)
+
+        if layer_name == 'boundary':
+            for _ in range(times):
+                ind = random.randint(0, len(instance_list[layer_name])-1)
+                corr_ind = correspondence_list[layer_name][ind]
+                bd1, bd2, nbd1, nbd2 = self.creat_boundray(
+                    instance_list[layer_name][ind], patch_box)
+                instance_list[layer_name].pop(ind)
+                instance_list[layer_name].insert(ind, bd1)
+                instance_list[layer_name].insert(ind+1, bd2)
+                correspondence_list[layer_name].insert(ind+1, corr_ind)
+                instance_list[layer_name].append(nbd1)
+                correspondence_list[layer_name].append(-1)
+                instance_list[layer_name].append(nbd2)
+                correspondence_list[layer_name].append(-1)
+
+        return instance_list, correspondence_list
+
+    def valid_geom(self, geom, patch_box, patch_angle):
+        patch = self.map_explorer.get_patch_coord(patch_box, patch_angle)
+        if geom.is_valid:
+            new_geom = geom.intersection(patch)
+            if not new_geom.is_empty:
+                new_geom = affinity.rotate(
+                    new_geom, -patch_angle, origin=(patch_box[0], patch_box[1]), use_radians=False)
+                new_geom = affinity.affine_transform(new_geom,
+                                                     [1.0, 0.0, 0.0, 1.0, -patch_box[0], -patch_box[1]])
+
+                if new_geom.geom_type == 'Polygon':
+                    new_geom = MultiPolygon([new_geom])
+            else:
+                return None
         else:
             return None
 
-        return new_polygon
+        return new_geom
 
     def difromate_map(self, map_ins_dict, def_args, patch_box):
-
         # Horizontal distortion amplitude random maximum range int
         Max_v = def_args[2][0]
         # Vertical distortion amplitude random maximum range int
@@ -196,9 +293,48 @@ class MapTransform:
         new_ins = np.array(new_point_list)
         return new_ins
 
+    def guassian_warping(self, map_ins_dict, def_args, patch_box):
+        g_xv, g_yv = self.gaussian_grid(patch_box, def_args)
+
+        for key in map_ins_dict.keys():
+            if len(map_ins_dict[key]):
+                for ind, ins in enumerate(map_ins_dict[key]):
+                    map_ins_dict[key][ind] = self.warping(ins, g_xv, g_yv)
+
+        return map_ins_dict
+
+    def gaussian_grid(self, patch_box, def_args):
+        nx, ny = int(patch_box[3]+1), int(patch_box[2]+1)
+        x = np.linspace(-int(patch_box[3]/2), int(patch_box[3]/2), nx)
+        y = np.linspace(-int(patch_box[2]/2), int(patch_box[2]/2), ny)
+        xv, yv = np.meshgrid(x, y, indexing='ij')
+        g_grid = np.random.normal(
+            def_args[2][0], def_args[2][1], size=[nx, ny])
+        g_xv = xv + g_grid
+        g_yv = yv + g_grid
+        g_xv[0, :] = xv[0, :]
+        g_xv[-1, :] = xv[-1, :]
+        g_yv[:, 0] = yv[:, 0]
+        g_yv[:, -1] = yv[:, -1]
+
+        return g_xv, g_yv
+
+    def warping(self, ins, xv, yv):
+        new_point_list = []
+        for point in ins:
+            x = point[0]
+            y = point[1]
+
+            x_coor = round(x) + 15
+            y_coor = round(y) + 30
+
+            g_pt = (xv[x_coor, y_coor], yv[x_coor, y_coor])
+            new_point_list.append(g_pt)
+
+        return np.array(new_point_list)
+
 
 class PerturbedVectorizedLocalMap(object):
-
     def __init__(self,
                  nusc_map,
                  map_explorer,
@@ -264,7 +400,10 @@ class PerturbedVectorizedLocalMap(object):
         for vec_class in map_ins_dict.keys():
             if len(map_ins_dict[vec_class]):
                 for instance in map_ins_dict[vec_class]:
-                    map_dict[vec_class].append(np.array(instance.coords))
+                    distance = np.linspace(0, instance.length, 20)
+                    inter_points = np.array(
+                        [np.array(instance.interpolate(n).coords)[0] for n in distance])
+                    map_dict[vec_class].append(inter_points)
 
         return map_dict
 
@@ -286,37 +425,7 @@ class PerturbedVectorizedLocalMap(object):
 
         return map_geom
 
-    def valid_polygon(self, polygon, patch, patch_angle, patch_x, patch_y, polygon_list):
-        valid = False
-        if polygon.is_valid:
-            new_polygon = polygon.intersection(patch)
-            if not new_polygon.is_empty:
-                new_polygon = affinity.rotate(new_polygon, -patch_angle,
-                                              origin=(patch_x, patch_y), use_radians=False)
-                new_polygon = affinity.affine_transform(new_polygon,
-                                                        [1.0, 0.0, 0.0, 1.0, -patch_x, -patch_y])
-                if new_polygon.geom_type == 'Polygon':
-                    new_polygon = MultiPolygon([new_polygon])
-                polygon_list.append(new_polygon)
-                valid = True
-
-        return polygon_list, valid
-
-    def valid_line(self, line, patch, patch_angle, patch_x, patch_y, line_list):
-        new_line = line.intersection(patch)
-        valid = False
-        if not new_line.is_empty:
-            new_line = affinity.rotate(
-                new_line, -patch_angle, origin=(patch_x, patch_y), use_radians=False)
-            new_line = affinity.affine_transform(new_line,
-                                                 [1.0, 0.0, 0.0, 1.0, -patch_x, -patch_y])
-            line_list.append(new_line)
-            valid = True
-
-        return line_list, valid
-
-    def get_divider_line(self, patch_box, patch_angle, layer_name):
-        # 'road_divider', 'lane_divider', 'traffic_light'
+    def get_divider_line(self, patch_box, patch_angle, layer_name): # 'road_divider', 'lane_divider'
         if layer_name not in self.map_explorer.map_api.non_geometric_line_layers:
             raise ValueError("{} is not a line layer".format(layer_name))
 
@@ -327,31 +436,20 @@ class PerturbedVectorizedLocalMap(object):
         records = self.map_explorer.map_api.get_records_in_patch(
             patch_coords, [layer_name])[layer_name]
 
-        ind_list = [i for i in range(len(records))]
-        map_pt = [None]*len(records)
-
         line_list = []
-        patch_x = patch_box[0]
-        patch_y = patch_box[1]
-
-        patch = self.map_explorer.get_patch_coord(patch_box, patch_angle)
-
-        for ind in ind_list:
-            record = self.map_explorer.map_api.get(layer_name, records[ind])
+        for token in records:
+            record = self.map_explorer.map_api.get(layer_name, token)
             line = self.map_explorer.map_api.extract_line(
                 record['line_token'])
             if line.is_empty:  # Skip lines without nodes.
                 continue
-
-            line_list, valid = self.valid_line(
-                line, patch, patch_angle, patch_x, patch_y, line_list)
-            if valid:
-                map_pt[ind] = 0
+            valid = self.map_trans.valid_geom(line, patch_box, patch_angle)
+            if valid is not None:
+                line_list.append(valid)
 
         return line_list
 
-    def get_contour_line(self, patch_box, patch_angle, layer_name):
-        # 'road_segment', 'lane'
+    def get_contour_line(self, patch_box, patch_angle, layer_name):  # 'road_segment', 'lane'
         if layer_name not in self.map_explorer.map_api.lookup_polygon_layers:
             raise ValueError('{} is not a polygonal layer'.format(layer_name))
 
@@ -359,51 +457,30 @@ class PerturbedVectorizedLocalMap(object):
         records = self.map_explorer.map_api.get_records_in_patch(
             patch_coords, [layer_name])[layer_name]
 
-        ind_list = [i for i in range(len(records))]
-        map_pt = [None]*len(records)
-
         polygon_list = []
-        patch_x = patch_box[0]
-        patch_y = patch_box[1]
-
-        patch = self.map_explorer.get_patch_coord(patch_box, patch_angle)
-
-        for ind in ind_list:
-            record = self.map_explorer.map_api.get(layer_name, records[ind])
+        for token in records:
+            record = self.map_explorer.map_api.get(layer_name, token)
             polygon = self.map_explorer.map_api.extract_polygon(
                 record['polygon_token'])
-
-            polygon_list, valid = self.valid_polygon(
-                polygon, patch, patch_angle, patch_x, patch_y, polygon_list)
-            if valid:
-                map_pt[ind] = 0
+            valid = self.map_trans.valid_geom(polygon, patch_box, patch_angle)
+            if valid is not None:
+                polygon_list.append(valid)
 
         return polygon_list
 
     def get_ped_crossing_line(self, patch_box, patch_angle, trans_args=None):
-
         patch_coords = self.map_trans.patch_box_2_coords(patch_box)
         records = self.map_explorer.map_api.get_records_in_patch(
             patch_coords, ['ped_crossing'])['ped_crossing']
 
-        ind_list = [i for i in range(len(records))]
-        map_pt = [None]*len(records)
-
         polygon_list = []
-        patch_x = patch_box[0]
-        patch_y = patch_box[1]
-
-        patch = self.map_explorer.get_patch_coord(patch_box, patch_angle)
-
-        for ind in ind_list:
-            record = self.map_explorer.map_api.get(
-                'ped_crossing', records[ind])
+        for token in records:
+            record = self.map_explorer.map_api.get('ped_crossing', token)
             polygon = self.map_explorer.map_api.extract_polygon(
                 record['polygon_token'])
-            polygon_list, valid = self.valid_polygon(
-                polygon, patch, patch_angle, patch_x, patch_y, polygon_list)
-            if valid:
-                map_pt[ind] = 0
+            valid = self.map_trans.valid_geom(polygon, patch_box, patch_angle)
+            if valid is not None:
+                polygon_list.append(valid)
 
         return polygon_list
 
@@ -501,46 +578,58 @@ class PerturbedVectorizedLocalMap(object):
 
         return self._one_type_line_geom_to_instances(results)
 
-    def get_trans_instance(self, map_ins_dict, trans_args, patch_box, patch_angle):
-        corr_dict = {'divider': [], 'ped_crossing': [],
-                     'boundary': []}
+    def get_org_info_dict(self, map_ins_dict):
+        corr_dict = {'divider': [], 'ped_crossing': [], 'boundary': []}
+        len_dict = {'divider': 0, 'ped_crossing': 0, 'boundary': 0}
 
         for vec_class in map_ins_dict.keys():
             if len(map_ins_dict[vec_class]):
+                len_dict[vec_class] = len(map_ins_dict[vec_class])
                 corr_dict[vec_class] = [
                     i for i in range(len(map_ins_dict[vec_class]))]
 
+        return corr_dict, len_dict
+
+    def get_trans_instance(self, map_ins_dict, trans_args, patch_box, patch_angle):
+
+        corr_dict, len_dict = self.get_org_info_dict(map_ins_dict)
+
         if trans_args.del_ped[0]:
             map_ins_dict, corr_dict = self.map_trans.delete_layers(
-                map_ins_dict, corr_dict, 'ped_crossing', trans_args.del_ped)
+                map_ins_dict, corr_dict, len_dict, 'ped_crossing', trans_args.del_ped)
 
         if trans_args.shi_ped[0]:
             map_ins_dict, corr_dict = self.map_trans.shift_layers(
-                map_ins_dict, corr_dict, 'ped_crossing', trans_args.shi_ped,  patch_box, patch_angle)
+                map_ins_dict, corr_dict, len_dict, 'ped_crossing', trans_args.shi_ped,  patch_box, patch_angle)
 
         if trans_args.add_ped[0]:
-            pass  # TODO
+            map_ins_dict, corr_dict = self.map_trans.add_layers(
+                map_ins_dict, corr_dict, len_dict, 'ped_crossing', trans_args.shi_ped,  patch_box, patch_angle)
 
         if trans_args.del_div[0]:
             map_ins_dict, corr_dict = self.map_trans.delete_layers(
-                map_ins_dict, corr_dict, 'divider', trans_args.del_ped)
+                map_ins_dict, corr_dict, len_dict, 'divider', trans_args.del_ped)
 
         if trans_args.shi_div[0]:
             map_ins_dict, corr_dict = self.map_trans.shift_layers(
-                map_ins_dict, corr_dict, 'ped_crossing', trans_args.shi_ped,  patch_box, patch_angle)
+                map_ins_dict, corr_dict, len_dict, 'divider', trans_args.shi_ped,  patch_box, patch_angle)
 
         if trans_args.add_div[0]:
             pass  # TODO
 
         if trans_args.del_bou[0]:
             map_ins_dict, corr_dict = self.map_trans.delete_layers(
-                map_ins_dict, corr_dict, 'boundary', trans_args.del_ped)
+                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.del_ped)
 
         if trans_args.shi_bou[0]:
             map_ins_dict, corr_dict = self.map_trans.shift_layers(
-                map_ins_dict, corr_dict, 'ped_crossing', trans_args.shi_ped,  patch_box, patch_angle)
+                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.shi_ped,  patch_box, patch_angle)
 
-        if trans_args.add_bou[0] or trans_args.aff_tra_pat[0] or trans_args.rot_pat[0] or trans_args.sca_pat[0] or trans_args.ske_pat[0] or trans_args.shi_pat[0]:
+        if trans_args.add_bou[0]:
+            map_ins_dict, corr_dict = self.map_trans.add_layers(
+                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.shi_ped,  patch_box, patch_angle)
+
+        if trans_args.aff_tra_pat[0] or trans_args.rot_pat[0] or trans_args.sca_pat[0] or trans_args.ske_pat[0] or trans_args.shi_pat[0]:
             map_ins_dict, corr_dict = self.map_trans.transfor_patch(
                 map_ins_dict, corr_dict, patch_box, patch_angle, trans_args)
 
@@ -549,32 +638,28 @@ class PerturbedVectorizedLocalMap(object):
 
 class PerturbParameters():
     def __init__(self,
-                 # [switch, number, args]
+                 # [switch, proportion, parameter]
                  # ped_crossing perturbation
-                 del_ped=[0, 1, None],  # delete ped_crossing
-                 # shift ped_crossing in its road_segment, shifted by offsets along each dimension[x, y]
-                 shi_ped=[0, 1, [0, 0]],
-                 # add ped_crossing in a road_segment TODO
-                 add_ped=[0, 1, None],
+                 del_ped=[0, 0, None],  # delete ped_crossing
+                 shi_ped=[0, 0, [0, 0]], # shift ped_crossing in its road_segment, shifted by offsets along each dimension[x, y]
+                 add_ped=[0, 0, None], # add ped_crossing in a road_segment
                  # dividers perturbation
-                 del_div=[0, 1, None],  # delete divider
-                 # shift divider, shifted by offsets along each dimension[x, y]
-                 shi_div=[0, 1, [0, 0]],
-                 add_div=[0, 1, None],  # add divider TODO
+                 del_div=[0, 0, None],  # delete divider
+                 shi_div=[0, 0, [0, 0]], # shift divider, shifted by offsets along each dimension[x, y]
+                 add_div=[0, 0, None],  # add divider TODO
                  # boundray perturabtion
-                 del_bou=[0, 1, None],  # delete lane
-                 # shift lane, shifted by offsets along each dimension[x, y]
-                 shi_bou=[0, 1, [0, 0]],
-                 add_bou=[0, 1, None],  # add lane TODO
+                 del_bou=[0, 0, None],  # delete lane
+                 shi_bou=[0, 0, [0, 0]], # shift lane, shifted by offsets along each dimension[x, y]
+                 add_bou=[0, 0, None],  # add boundray TODO
                  # patch perturbation
-                 aff_tra_pat=[0, 1, [1, 0, 0, 1, 0, 0]],  # affine_transform
-                 rot_pat=[0, 1, [0, [0, 0]]],  # rotate the patch
-                 sca_pat=[0, 1, [1, 1]],  # scale the patch
-                 ske_pat=[0, 1, [0, 0, (0, 0)]],  # skew the patch
-                 shi_pat=[0, 1, [0, 0]],  # translate: shift the patch
+                 aff_tra_pat=[0, 0, [1, 0, 0, 1, 0, 0]],  # affine_transform
+                 rot_pat=[0, 0, [0, [0, 0]]],  # rotate the patch
+                 sca_pat=[0, 0, [1, 1]],  # scale the patch
+                 ske_pat=[0, 0, [0, 0, (0, 0)]],  # skew the patch
+                 shi_pat=[0, 0, [0, 0]],  # translate: shift the patch
                  # deformation the patch
-                 # Horizontal, Vertical, and Inclination distortion amplitude
-                 def_pat=[0, 1, [0, 0, 0]],
+                 def_pat_tri=[0, 0, [0, 0, 0]], # Horizontal, Vertical, and Inclination distortion amplitude
+                 def_pat_gau=[0, 0, [0, 1]], # gaussian mean and standard deviation
                  # visulization
                  vis_path='/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual',
                  visual=True,
@@ -595,7 +680,8 @@ class PerturbParameters():
         self.sca_pat = sca_pat
         self.ske_pat = ske_pat
         self.shi_pat = shi_pat
-        self.def_pat = def_pat
+        self.def_pat_tri = def_pat_tri
+        self.def_pat_gau = def_pat_gau
 
         self.vis_path = vis_path
         self.visual = visual
@@ -614,9 +700,14 @@ def perturb_map(vector_map, lidar2global_translation, lidar2global_rotation, tra
             trans_dic['map_ins_dict'], trans_args, trans_dic['patch_box'], trans_dic['patch_angle'])
         info[map_version+'_correspondence'] = corr_dict
         trans_np_dict = vector_map.geom_to_np(trans_ins)
-        if trans_args.def_pat[0]:
+        
+        if trans_args.def_pat_tri[0]:
             trans_np_dict = vector_map.map_trans.difromate_map(
-                trans_np_dict, trans_args.def_pat, trans_dic['patch_box'])
+                trans_np_dict, trans_args.def_pat_tri, trans_dic['patch_box'])
+            
+        if trans_args.def_pat_gau[0]:
+            trans_np_dict = vector_map.map_trans.guassian_warping(
+                trans_np_dict, trans_args.def_pat_gau, trans_dic['patch_box'])
 
     info[map_version] = trans_np_dict
 
@@ -659,37 +750,37 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
 
     # the first perturbed map
     map_version = 'annotation_1'
-    trans_args = PerturbParameters(del_ped=[1, 1, None],
-                                   shi_ped=[1, 1, [5, 5]])
+    trans_args = PerturbParameters(del_ped=[1, 0.1, None],
+                                   shi_ped=[1, 0.1, [5, 5]],
+                                   add_ped=[1, 0.1, None])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
-    # sys.exit()
-
     # the second perturbed map
     map_version = 'annotation_2'
-    trans_args = PerturbParameters(del_div=[1, 1, None],
-                                   shi_div=[1, 1, [5, 5]])
+    trans_args = PerturbParameters(del_div=[1, 0.1, None],
+                                   shi_div=[1, 0.1, [5, 5]])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
     # the third perturbed map
     map_version = 'annotation_3'
-    trans_args = PerturbParameters(del_bou=[1, 1, None],
-                                   shi_bou=[1, 1, [5, 5]])
+    trans_args = PerturbParameters(del_bou=[1, 0.1, None],
+                                   shi_bou=[1, 0.1, [5, 5]])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
     # the fourth perturbed map
     map_version = 'annotation_4'
-    trans_args = PerturbParameters(rot_pat=[1, 1, [5, [0, 0]]],
-                                   shi_pat=[1, 1, [5, 5]])
+    trans_args = PerturbParameters(rot_pat=[1, 0.1, [5, [0, 0]]],
+                                   shi_pat=[1, 0.1, [5, 5]])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
     # the fifth perturbed map
     map_version = 'annotation_5'
-    trans_args = PerturbParameters(def_pat=[1, 1, [0, 0, 5]])
+    trans_args = PerturbParameters(def_pat_tri=[1, 1, [1, 1, 5]],
+                                   def_pat_gau=[1, 1, [0, 0.1]])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
