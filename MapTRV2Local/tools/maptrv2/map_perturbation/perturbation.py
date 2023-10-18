@@ -31,25 +31,21 @@ class MapTransform:
             if len(instance_list[key]):
                 for ind, ins in enumerate(instance_list[key]):
                     if args.aff_tra_pat[0]:
-                        geom = affinity.affine_transform(
-                            instance_list[key][ind], args.aff_tra_pat[2])
+                        ins = affinity.affine_transform(ins, args.aff_tra_pat[2])
                     if args.rot_pat[0]:
-                        geom = affinity.rotate(
-                            instance_list[key][ind], args.rot_pat[2][0], args.rot_pat[2][1])
+                        ins = affinity.rotate(ins, args.rot_pat[2][0], args.rot_pat[2][1])
                     if args.sca_pat[0]:
-                        geom = affinity.scale(
-                            instance_list[key][ind], args.sca_pat[2][0], args.sca_pat[2][1])
+                        ins = affinity.scale(ins, args.sca_pat[2][0], args.sca_pat[2][1])
                     if args.ske_pat[0]:
-                        geom = affinity.skew(
-                            instance_list[key][ind], args.sca_ske_patpat[2][0], args.ske_pat[2][1], args.ske_pat[2][2])
-                    if args.ske_pat[0]:
-                        geom = affinity.translate(
-                            instance_list[key][ind], args.ske_pat[2][0], args.ske_pat[2][1])
+                        ins = affinity.skew(ins, args.sca_ske_patpat[2][0], args.ske_pat[2][1], args.ske_pat[2][2])
+                    if args.shi_pat[0]:
+                        ins = affinity.translate(ins, args.ske_pat[2][0], args.ske_pat[2][1])
 
-                    geom = self.valid_geom(geom, patch_box, patch_angle)
+                    geom = self.valid_geom(ins, patch_box, patch_angle)
                     if geom is None:
-                        instance_list[key].pop(ind)
-                        correspondence_list[key].pop(ind)
+                        # instance_list[key].pop(ind)
+                        # correspondence_list[key].pop(ind)
+                        pass
                     else:
                         instance_list[key][ind] = geom
 
@@ -164,8 +160,9 @@ class MapTransform:
                     instance_list[layer_name][ind], args[2][0], args[2][1])
                 geom = self.valid_geom(geom, patch_box, patch_angle)
                 if geom is None:
-                    instance_list[layer_name].pop(ind)
-                    correspondence_list[layer_name].pop(ind)
+                    # instance_list[layer_name].pop(ind)
+                    # correspondence_list[layer_name].pop(ind)
+                    pass
                 else:
                     instance_list[layer_name][ind] = geom
 
@@ -608,26 +605,26 @@ class PerturbedVectorizedLocalMap(object):
 
         if trans_args.del_div[0]:
             map_ins_dict, corr_dict = self.map_trans.delete_layers(
-                map_ins_dict, corr_dict, len_dict, 'divider', trans_args.del_ped)
+                map_ins_dict, corr_dict, len_dict, 'divider', trans_args.del_div)
 
         if trans_args.shi_div[0]:
             map_ins_dict, corr_dict = self.map_trans.shift_layers(
-                map_ins_dict, corr_dict, len_dict, 'divider', trans_args.shi_ped,  patch_box, patch_angle)
+                map_ins_dict, corr_dict, len_dict, 'divider', trans_args.shi_div,  patch_box, patch_angle)
 
         if trans_args.add_div[0]:
             pass  # TODO
 
         if trans_args.del_bou[0]:
             map_ins_dict, corr_dict = self.map_trans.delete_layers(
-                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.del_ped)
+                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.del_bou)
 
         if trans_args.shi_bou[0]:
             map_ins_dict, corr_dict = self.map_trans.shift_layers(
-                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.shi_ped,  patch_box, patch_angle)
+                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.shi_bou,  patch_box, patch_angle)
 
         if trans_args.add_bou[0]:
             map_ins_dict, corr_dict = self.map_trans.add_layers(
-                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.shi_ped,  patch_box, patch_angle)
+                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.add_bou,  patch_box, patch_angle)
 
         if trans_args.aff_tra_pat[0] or trans_args.rot_pat[0] or trans_args.sca_pat[0] or trans_args.ske_pat[0] or trans_args.shi_pat[0]:
             map_ins_dict, corr_dict = self.map_trans.transfor_patch(
@@ -773,13 +770,13 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
     # the fourth perturbed map
     map_version = 'annotation_4'
     trans_args = PerturbParameters(rot_pat=[1, 0.1, [5, [0, 0]]],
-                                   shi_pat=[1, 0.1, [5, 5]])
+                                   shi_pat=[1, 0.1, [3, 3]])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
     # the fifth perturbed map
     map_version = 'annotation_5'
-    trans_args = PerturbParameters(def_pat_tri=[1, 1, [1, 1, 5]],
+    trans_args = PerturbParameters(def_pat_tri=[1, 1, [1, 1, 3]],
                                    def_pat_gau=[1, 1, [0, 0.1]])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
