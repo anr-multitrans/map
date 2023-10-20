@@ -24,22 +24,74 @@ parser.add_argument(
 The output will be two .pkl files: nuscenes_map_infos_temporal_train.pkl and nuscenes_map_infos_temporal_val.pkl
 
 more parameters may be needed in future studies:
+```python
+parser.add_argument(
+    '--version',
+    type=str,
+    default='v1.0',
+    required=False,
+    help='specify the dataset version, no need for kitti')
+```
 '--version' the version of nuscenes data. If you want to use other versions of NuScenes data, commit the version = 'v1.0-mini' block and uncommit the upper two blocks: train_version and test_version. And set the version to '--version'
+```python
+if __name__ == '__main__':
+    # train_version = f'{args.version}-trainval'
+    # create_nuscenes_infos(
+    #     root_path=args.root_path,
+    #     out_path=args.out_dir,
+    #     can_bus_root_path=args.canbus,
+    #     info_prefix=args.extra_tag,
+    #     version=train_version,
+    #     max_sweeps=args.max_sweeps)
 
+    # test_version = f'{args.version}-test'
+    # create_nuscenes_infos(
+    #     root_path=args.root_path,
+    #     out_path=args.out_dir,
+    #     can_bus_root_path=args.canbus,
+    #     info_prefix=args.extra_tag,
+    #     version=test_version,
+    #     max_sweeps=args.max_sweeps)
+
+    version = 'v1.0-mini'
+    create_nuscenes_infos(
+        root_path=args.root_path,
+        out_path=args.out_dir,
+        can_bus_root_path=args.canbus,
+        info_prefix=args.extra_tag,
+        version=version,
+        max_sweeps=args.max_sweeps)
+
+```
 
 # How to modify perturbation parameters
 Modify it in perturbation.py file.
 
-## Modify the number of perturbed annotation versions
+## Creating perturbation versions
 In the function obtain_perturb_vectormap(), by setting the perturbation version name and perturbation parameters, you can create multiple annotation versions to add to info.
 ```python
+    # the first perturbed map
     map_version = 'annotation_1'
-    trans_args = PerturbParameters(del_ped=[1, 1],  # delet a ped_crossing
-                                   del_lan=[1, 1])  # delete a lane
+    trans_args = PerturbParameters(del_ped=[1, 0.1, None],
+                                   shi_ped=[1, 0.1, [5, 5]],
+                                   add_ped=[1, 0.1, None])
+    info = perturb_map(vector_map, lidar2global_translation,
+                       lidar2global_rotation, trans_args, info, map_version, visual)
+
+    # the second perturbed map
+    map_version = 'annotation_2'
+    trans_args = PerturbParameters(del_div=[1, 0.1, None],
+                                   shi_div=[1, 0.1, [5, 5]])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 ```
-The default parameters in the trans_args() class include all perturbation types, and value is a list containing two elements [Boolean value: whether to perform this perturbation, variable type: additional perturbation parameters]
+The default parameters in the trans_args() class include all perturbation types, and value is a list containing 3 elements
+
+[Boolean: whether to perform this perturbation,
+
+Float: perturbation ratio: 0-1,
+
+Variable type: additional perturbation parameters]
 
 ## The result
 Each sample in each scene, corresponding to the annotation, has multiple perturbation versions **annotation_\*** and its corresponding list of the original image **annotation_*_correspondence** .

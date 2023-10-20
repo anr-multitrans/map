@@ -390,19 +390,40 @@ class PerturbedVectorizedLocalMap(object):
 
         return {'map_ins_dict': map_ins_dict, 'patch_box': patch_box, 'patch_angle': patch_angle}
 
-    def geom_to_np(self, map_ins_dict):
+    def geom_to_np(self, map_ins_dict, inter_args = 0):
         map_dict = {'divider': [], 'ped_crossing': [],
-                    'boundary': []}
+                'boundary': []}
 
         for vec_class in map_ins_dict.keys():
             if len(map_ins_dict[vec_class]):
                 for instance in map_ins_dict[vec_class]:
-                    distance = np.linspace(0, instance.length, 20)
-                    inter_points = np.array(
-                        [np.array(instance.interpolate(n).coords)[0] for n in distance])
-                    map_dict[vec_class].append(inter_points)
+                    if inter_args:
+                        instance = self.interpolate(instance, inter_args)
+                    else:
+                        instance = instance.coords
+                    
+                    map_dict[vec_class].append(np.array(instance))
 
         return map_dict
+
+    def np_to_geom(self, map_ins_dict):
+        map_dict = {'divider': [], 'ped_crossing': [],
+                'boundary': []}
+
+        for vec_class in map_ins_dict.keys():
+            if len(map_ins_dict[vec_class]):
+                for instance in map_ins_dict[vec_class]:
+                    instance = LineString([[x[0],x[1]] for x in instance])
+                    
+                    map_dict[vec_class].append(instance)
+        
+        return map_dict
+
+    def interpolate(self, instance, inter_args=0):
+        distance = np.linspace(0, instance.length, inter_args)
+        instance = [np.array(instance.interpolate(n).coords)[0] for n in distance]
+        
+        return instance
 
     def get_map_geom(self, patch_box, patch_angle, layer_names):
         map_geom = {}
@@ -691,7 +712,7 @@ def perturb_map(vector_map, lidar2global_translation, lidar2global_rotation, tra
         lidar2global_translation, lidar2global_rotation, trans_args)
 
     if '_' not in map_version:
-        trans_np_dict = vector_map.geom_to_np(trans_dic['map_ins_dict'])
+        trans_np_dict = vector_map.geom_to_np(trans_dic['map_ins_dict'], inter_args=20)
     else:
         trans_ins, corr_dict = vector_map.get_trans_instance(
             trans_dic['map_ins_dict'], trans_args, trans_dic['patch_box'], trans_dic['patch_angle'])
@@ -705,7 +726,11 @@ def perturb_map(vector_map, lidar2global_translation, lidar2global_rotation, tra
         if trans_args.def_pat_gau[0]:
             trans_np_dict = vector_map.map_trans.guassian_warping(
                 trans_np_dict, trans_args.def_pat_gau, trans_dic['patch_box'])
-
+        
+        trans_np_dict = vector_map.np_to_geom(trans_np_dict)
+        trans_np_dict = vector_map.geom_to_np(trans_np_dict, inter_args=20)
+        
+        
     info[map_version] = trans_np_dict
 
     visual.vis_contours(trans_np_dict, trans_dic['patch_box'], map_version)
