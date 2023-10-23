@@ -300,6 +300,15 @@ class MapTransform:
 
         return map_ins_dict
 
+    def guassian_noise(self, map_ins_dict, def_args):
+        for key in map_ins_dict.keys():
+            if len(map_ins_dict[key]):
+                for ind, ins in enumerate(map_ins_dict[key]):
+                    g_nois = np.random.normal(def_args[2][0], def_args[2][1], size=map_ins_dict[key][ind].shape)
+                    map_ins_dict[key][ind] += g_nois
+
+        return map_ins_dict
+    
     def gaussian_grid(self, patch_box, def_args):
         nx, ny = int(patch_box[3]+1), int(patch_box[2]+1)
         x = np.linspace(-int(patch_box[3]/2), int(patch_box[3]/2), nx)
@@ -322,11 +331,22 @@ class MapTransform:
             x = point[0]
             y = point[1]
 
-            x_coor = round(x) + 15
-            y_coor = round(y) + 30
-
+            o_x = round(x)
+            o_y = round(y)
+            
+            x_coor = o_x + 15
+            y_coor = o_y + 30
+            
             g_pt = (xv[x_coor, y_coor], yv[x_coor, y_coor])
-            new_point_list.append(g_pt)
+            
+            xy_t_o_grid = (o_x - x, o_y - y)
+            move = (g_pt[0] - o_x, g_pt[1] - o_y)
+            move_ = (xy_t_o_grid[0] * move[0], xy_t_o_grid[1] * move[1])
+            
+            x_ = x + move_[0]
+            y_ = y + move_[1]
+            
+            new_point_list.append((x_, y_))
 
         return np.array(new_point_list)
 
@@ -390,17 +410,21 @@ class PerturbedVectorizedLocalMap(object):
 
         return {'map_ins_dict': map_ins_dict, 'patch_box': patch_box, 'patch_angle': patch_angle}
 
-    def geom_to_np(self, map_ins_dict, inter_args = 0):
+    def geom_to_np(self, map_ins_dict, inter_args = 0, int_back = False):
         map_dict = {'divider': [], 'ped_crossing': [],
                 'boundary': []}
 
         for vec_class in map_ins_dict.keys():
             if len(map_ins_dict[vec_class]):
-                for instance in map_ins_dict[vec_class]:
-                    if inter_args:
-                        instance = self.interpolate(instance, inter_args)
+                for ind, instance in enumerate(map_ins_dict[vec_class]):
+                    if not int_back:
+                        if inter_args:
+                            instance = self.interpolate(instance, inter_args)
+                        else:
+                            instance = instance.coords
                     else:
-                        instance = instance.coords
+                        shape = inter_args[vec_class][ind].shape
+                        instance = self.interpolate(instance, shape[0])
                     
                     map_dict[vec_class].append(np.array(instance))
 
@@ -675,9 +699,13 @@ class PerturbParameters():
                  sca_pat=[0, 0, [1, 1]],  # scale the patch
                  ske_pat=[0, 0, [0, 0, (0, 0)]],  # skew the patch
                  shi_pat=[0, 0, [0, 0]],  # translate: shift the patch
-                 # deformation the patch
                  def_pat_tri=[0, 0, [0, 0, 0]], # Horizontal, Vertical, and Inclination distortion amplitude
                  def_pat_gau=[0, 0, [0, 1]], # gaussian mean and standard deviation
+                 gau_noi_pat=[0, 0, [0, 1]], # gaussian mean and standard deviation
+                 # Interpolation
+                 int_num = 0,
+                 int_ord = 'after', # before the pertubation or after it
+                 int_sav = None, # save the interpolated instances
                  # visulization
                  vis_path='/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual',
                  visual=True,
@@ -700,7 +728,11 @@ class PerturbParameters():
         self.shi_pat = shi_pat
         self.def_pat_tri = def_pat_tri
         self.def_pat_gau = def_pat_gau
+        self.gau_noi_pat = gau_noi_pat
 
+        self.int_num = int_num
+        self.int_ord = int_ord
+        self.int_sav = int_sav
         self.vis_path = vis_path
         self.visual = visual
         self.vis_show = vis_show
@@ -712,13 +744,22 @@ def perturb_map(vector_map, lidar2global_translation, lidar2global_rotation, tra
         lidar2global_translation, lidar2global_rotation, trans_args)
 
     if '_' not in map_version:
-        trans_np_dict = vector_map.geom_to_np(trans_dic['map_ins_dict'], inter_args=20)
+        trans_np_dict_4_vis = vector_map.geom_to_np(trans_dic['map_ins_dict'], inter_args=20)
+        visual.vis_contours(trans_np_dict_4_vis, trans_dic['patch_box'], map_version)
+        if trans_args.int_num and trans_args.int_sav:
+            trans_np_dict = trans_np_dict_4_vis
+        else:
+            trans_np_dict = vector_map.geom_to_np(trans_dic['map_ins_dict'])
     else:
         trans_ins, corr_dict = vector_map.get_trans_instance(
             trans_dic['map_ins_dict'], trans_args, trans_dic['patch_box'], trans_dic['patch_angle'])
         info[map_version+'_correspondence'] = corr_dict
-        trans_np_dict = vector_map.geom_to_np(trans_ins)
         
+        if trans_args.int_num and trans_args.int_ord == 'before':
+            trans_np_dict = vector_map.geom_to_np(trans_ins, inter_args=trans_args.int_num)
+        else:
+            trans_np_dict = vector_map.geom_to_np(trans_ins)
+            
         if trans_args.def_pat_tri[0]:
             trans_np_dict = vector_map.map_trans.difromate_map(
                 trans_np_dict, trans_args.def_pat_tri, trans_dic['patch_box'])
@@ -727,13 +768,26 @@ def perturb_map(vector_map, lidar2global_translation, lidar2global_rotation, tra
             trans_np_dict = vector_map.map_trans.guassian_warping(
                 trans_np_dict, trans_args.def_pat_gau, trans_dic['patch_box'])
         
-        trans_np_dict = vector_map.np_to_geom(trans_np_dict)
-        trans_np_dict = vector_map.geom_to_np(trans_np_dict, inter_args=20)
+        if trans_args.gau_noi_pat[0]:
+            trans_np_dict = vector_map.map_trans.guassian_noise(trans_np_dict, trans_args.gau_noi_pat)
         
+        if (trans_args.int_num and trans_args.int_ord) == 'after' or (not trans_args.int_num and trans_args.int_sav):
+            trans_np_dict = vector_map.np_to_geom(trans_np_dict)
+            trans_np_dict = vector_map.geom_to_np(trans_np_dict, trans_args.int_num)
+            visual.vis_contours(trans_np_dict, trans_dic['patch_box'], map_version)
         
+        elif trans_args.int_num and not trans_args.int_sav:
+            visual.vis_contours(trans_np_dict, trans_dic['patch_box'], map_version)
+            trans_np_dict = vector_map.np_to_geom(trans_np_dict)
+            trans_ins_np = vector_map.geom_to_np(trans_ins)
+            trans_np_dict = vector_map.geom_to_np(trans_np_dict, trans_ins_np, int_back = True)
+        
+        else: # not trans_args.int_num and not trans_args.int_sav
+            trans_np_dict_4_vis = vector_map.np_to_geom(trans_np_dict)
+            trans_np_dict_4_vis = vector_map.geom_to_np(trans_np_dict_4_vis, trans_args.int_num)
+            visual.vis_contours(trans_np_dict_4_vis, trans_dic['patch_box'], map_version)
+            
     info[map_version] = trans_np_dict
-
-    visual.vis_contours(trans_np_dict, trans_dic['patch_box'], map_version)
 
     return info
 
@@ -770,39 +824,28 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
-    # the first perturbed map
+    # the 1st perturbed map: Keep only boundaries
     map_version = 'annotation_1'
-    trans_args = PerturbParameters(del_ped=[1, 0.1, None],
-                                   shi_ped=[1, 0.1, [5, 5]],
-                                   add_ped=[1, 0.1, None])
+    trans_args = PerturbParameters(del_ped=[1, 1, None],
+                                   del_div=[1, 1, None])
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
-    # the second perturbed map
+    # the 2nd perturbed map: Gaussain noise
     map_version = 'annotation_2'
-    trans_args = PerturbParameters(del_div=[1, 0.1, None],
-                                   shi_div=[1, 0.1, [5, 5]])
+    trans_args = PerturbParameters(gau_noi_pat=[1, 1, [0, 0.2]],
+                                   int_num = 20,
+                                   int_ord = 'before')
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
-    # the third perturbed map
+    # the 3rd perturbed map: Remove 50% ped_crossing and add 50% new ped_crossing and warping
     map_version = 'annotation_3'
-    trans_args = PerturbParameters(del_bou=[1, 0.1, None],
-                                   shi_bou=[1, 0.1, [5, 5]])
-    info = perturb_map(vector_map, lidar2global_translation,
-                       lidar2global_rotation, trans_args, info, map_version, visual)
-
-    # the fourth perturbed map
-    map_version = 'annotation_4'
-    trans_args = PerturbParameters(rot_pat=[1, 0.1, [5, [0, 0]]],
-                                   shi_pat=[1, 0.1, [3, 3]])
-    info = perturb_map(vector_map, lidar2global_translation,
-                       lidar2global_rotation, trans_args, info, map_version, visual)
-
-    # the fifth perturbed map
-    map_version = 'annotation_5'
-    trans_args = PerturbParameters(def_pat_tri=[1, 1, [1, 1, 3]],
-                                   def_pat_gau=[1, 1, [0, 0.1]])
+    trans_args = PerturbParameters(del_ped=[1, 0.5, None],
+                                   add_ped=[1, 0.5, None],
+                                   def_pat_gau=[1, 1, [0, 0.5]],
+                                   int_num = 20,
+                                   int_ord = 'before')
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
