@@ -232,11 +232,11 @@ class MapTransform:
         return new_geom
 
     def difromate_map(self, map_ins_dict, def_args, patch_box):
-        # Horizontal distortion amplitude random maximum range int
-        Max_v = def_args[2][0]
         # Vertical distortion amplitude random maximum range int
-        Max_h = def_args[2][1]
-        Max_r = def_args[2][2]  # Inclination amplitude [-Max_r Max_r] int
+        v = def_args[2][0]
+        # Horizontal distortion amplitude random maximum range int
+        h = def_args[2][1]
+        i = def_args[2][2]  # Inclination amplitude [-Max_r Max_r] int
 
         xlim = [-patch_box[3]/2, patch_box[3]/2]
         ylim = [-patch_box[2]/2, patch_box[2]/2]
@@ -245,15 +245,11 @@ class MapTransform:
             if len(map_ins_dict[key]):
                 for ind, ins in enumerate(map_ins_dict[key]):
                     map_ins_dict[key][ind] = self.con(
-                        ins, xlim, ylim, Max_v, Max_h, Max_r)
+                        ins, xlim, ylim, v, h, i)
 
         return map_ins_dict
 
-    def con(self, ins, xlim, ylim, Max_v, Max_h, Max_r):
-        randx = Max_v
-        randy = Max_h
-        randr = Max_r
-
+    def con(self, ins, xlim, ylim, randx, randy, randr):
         new_point_list = []
         for point in ins:
 
@@ -296,6 +292,7 @@ class MapTransform:
         for key in map_ins_dict.keys():
             if len(map_ins_dict[key]):
                 for ind, ins in enumerate(map_ins_dict[key]):
+                    ins = self.fix_corner(ins)
                     map_ins_dict[key][ind] = self.warping(ins, g_xv, g_yv)
 
         return map_ins_dict
@@ -304,7 +301,7 @@ class MapTransform:
         for key in map_ins_dict.keys():
             if len(map_ins_dict[key]):
                 for ind, ins in enumerate(map_ins_dict[key]):
-                    g_nois = np.random.normal(def_args[2][0], def_args[2][1], size=map_ins_dict[key][ind].shape)
+                    g_nois = np.random.normal(def_args[2][0], def_args[2][1], ins.shape)
                     map_ins_dict[key][ind] += g_nois
 
         return map_ins_dict
@@ -314,10 +311,8 @@ class MapTransform:
         x = np.linspace(-int(patch_box[3]/2), int(patch_box[3]/2), nx)
         y = np.linspace(-int(patch_box[2]/2), int(patch_box[2]/2), ny)
         xv, yv = np.meshgrid(x, y, indexing='ij')
-        g_grid = np.random.normal(
-            def_args[2][0], def_args[2][1], size=[nx, ny])
-        g_xv = xv + g_grid
-        g_yv = yv + g_grid
+        g_xv = xv + np.random.normal(def_args[2][0], def_args[2][1], size=[nx, ny])
+        g_yv = yv + np.random.normal(def_args[2][0], def_args[2][1], size=[nx, ny])
         g_xv[0, :] = xv[0, :]
         g_xv[-1, :] = xv[-1, :]
         g_yv[:, 0] = yv[:, 0]
@@ -325,22 +320,46 @@ class MapTransform:
 
         return g_xv, g_yv
 
+    def fix_corner(self, ins):
+        for dem in range(ins.shape[1]):
+            ins_c = ins[:, dem]
+            ins_c[ins_c > (15 * (dem + 1))] = 15 * (dem + 1)
+            ins_c[ins_c < (-15 * (dem + 1))] = -15 * (dem + 1)
+            ins[:, dem] = ins_c
+            
+        return ins
+
     def warping(self, ins, xv, yv):
         new_point_list = []
         for point in ins:
             x = point[0]
             y = point[1]
-
-            o_x = round(x)
-            o_y = round(y)
             
-            x_coor = o_x + 15
-            y_coor = o_y + 30
+            ## square classification
+            # org_x = round(x)
+            # org_y = round(y)
+            
+            ## trangle classification
+            dec_x = x // 1 - x
+            dec_y = y // 1 - y
+            
+            if dec_x < dec_y:
+                org_x = math.floor(x)
+                org_y = math.ceil(y)
+            else:
+                org_x = math.ceil(x)
+                org_y = math.floor(y)
+                
+            x_coor = org_x + 15
+            y_coor = org_y + 30
+            
+            if x_coor == 31:
+                print('wrong')
             
             g_pt = (xv[x_coor, y_coor], yv[x_coor, y_coor])
             
-            xy_t_o_grid = (o_x - x, o_y - y)
-            move = (g_pt[0] - o_x, g_pt[1] - o_y)
+            xy_t_o_grid = (org_x - x, org_y - y)
+            move = (g_pt[0] - org_x, g_pt[1] - org_y)
             move_ = (xy_t_o_grid[0] * move[0], xy_t_o_grid[1] * move[1])
             
             x_ = x + move_[0]
@@ -372,7 +391,7 @@ class PerturbedVectorizedLocalMap(object):
         self.patch_size = patch_size
         self.map_trans = MapTransform(self.map_explorer)
 
-    def gen_vectorized_samples(self, lidar2global_translation, lidar2global_rotation, trans_args):
+    def gen_vectorized_samples(self, lidar2global_translation, lidar2global_rotation):
         '''
         get transformed gt map layers
         '''
@@ -704,8 +723,8 @@ class PerturbParameters():
                  gau_noi_pat=[0, 0, [0, 1]], # gaussian mean and standard deviation
                  # Interpolation
                  int_num = 0,
-                 int_ord = 'after', # before the pertubation or after it
-                 int_sav = None, # save the interpolated instances
+                 int_ord = 'after', # before the perturbation or after it
+                 int_sav = False, # save the interpolated instances
                  # visulization
                  vis_path='/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual',
                  visual=True,
@@ -740,8 +759,7 @@ class PerturbParameters():
 
 def perturb_map(vector_map, lidar2global_translation, lidar2global_rotation, trans_args, info, map_version, visual):
 
-    trans_dic = vector_map.gen_vectorized_samples(
-        lidar2global_translation, lidar2global_rotation, trans_args)
+    trans_dic = vector_map.gen_vectorized_samples(lidar2global_translation, lidar2global_rotation)
 
     if '_' not in map_version:
         trans_np_dict_4_vis = vector_map.geom_to_np(trans_dic['map_ins_dict'], inter_args=20)
@@ -831,7 +849,7 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
-    # the 2nd perturbed map: Gaussain noise
+    # the 2nd perturbed map: Gaussian noise
     map_version = 'annotation_2'
     trans_args = PerturbParameters(gau_noi_pat=[1, 1, [0, 0.2]],
                                    int_num = 20,
@@ -849,4 +867,6 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range):
     info = perturb_map(vector_map, lidar2global_translation,
                        lidar2global_rotation, trans_args, info, map_version, visual)
 
+    info['order'] = ['divider', 'ped_crossing', 'boundary']
+    
     return info
