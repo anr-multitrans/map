@@ -68,7 +68,40 @@ if __name__ == '__main__':
 Modify it in perturbation.py file.
 
 ## Creating perturbation versions
-In the function obtain_perturb_vectormap(), by setting the perturbation version name and perturbation parameters, you can create multiple annotation versions to add to info.
+In the function obtain_perturb_vectormap(), by setting the perturbation parameters, you can create pertubated annotation versions to add to info.
+```python
+# ------peturbation------
+trans_args = PerturbParameters(del_ped=[1, 0.5, None],
+                                add_ped=[1, 0.25, None],
+                                del_div=[0, 0.5, None],
+                                # trigonometric warping
+                                def_pat_tri=[1, None, [1., 1., 3.]],
+                                # Gaussian warping
+                                def_pat_gau=[1, None, [0, 0.1]],
+                                int_num=0,   # 0 means no interpolation, default is 0
+                                int_ord='before',  # before the perturbation or after it, default is 'before'
+                                int_sav=False,
+                                visual=True,         # switch for the visualization
+                                vis_show=False,      # switch for plot
+                                vis_path='/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual/')   # path for saving the visualization)    # default is False
+```
+You should give your annotation a name, such as "annotation_1". After running you will have a perturbation annotation in your info.
+
+Since the Gaussian warp used generates noise randomly each time, you can create a loop to generate multiple perturbation annotations as shown below.
+```python
+# the pertubated map
+# w/o loop
+info = perturb_map(vector_map, lidar2global_translation,
+                    lidar2global_rotation, trans_args, info, 'annotation_1', visual, trans_dic)
+
+# w loop
+# loop = asyncio.get_event_loop()                                              # Have a new event loop
+# looper = asyncio.gather(*[perturb_map(vector_map, lidar2global_translation,
+#                                       lidar2global_rotation, trans_args, info, 'annotation_{}'.format(i), visual, trans_dic) for i in range(10)])         # Run the loop
+# results = loop.run_until_complete(looper)
+```
+In addition to the one-shot and loop methods above, to create multiple different versions of the perturbation annotation, you can also create different trans_args for each version.
+
 ```python
     # the first perturbed map
     map_version = 'annotation_1'
@@ -89,7 +122,7 @@ The default parameters in the trans_args() class include all perturbation types,
 
 [Boolean: whether to perform this perturbation,
 
-Float: perturbation ratio: 0-1,
+Float: perturbation ratio: 0-1, or None - for patch transformations
 
 Variable type: additional perturbation parameters]
 
