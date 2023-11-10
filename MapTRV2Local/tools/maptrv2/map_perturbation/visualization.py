@@ -20,7 +20,9 @@ class RenderMap:
     def __init__(self,
                  info,
                  vector_map,
-                 trans_args):
+                 vis_path: str,
+                 vis_switch = True,
+                 vis_show = False):
         """
         :param map_api: NuScenesMap database class.
         :param color_map: Color map.
@@ -38,15 +40,15 @@ class RenderMap:
                               lane_divider='#6a3d9a',
                               traffic_light='#7e772e')
 
-        self.colors_plt = {'divider': 'r',
-                           'ped_crossing': 'b', 'boundary': 'g'}
+        self.colors_plt = {'divider': '#808000',
+                           'ped_crossing': '#000080', 'boundary': '#008000'}
 
         self.info = info
         self.map_api = vector_map.nusc_map
         self.map_exploer = vector_map.map_explorer
-        self.switch = trans_args.visual
-        self.show = trans_args.vis_show
-        self.save = os.path.join(trans_args.vis_path, info['scene_token'], info['token'])
+        self.switch = vis_switch
+        self.show = vis_show
+        self.save = os.path.join(vis_path, info['scene_token'], info['token'])
 
         self.canvas_max_x = self.map_api.canvas_edge[0]
         self.canvas_min_x = 0
