@@ -2,6 +2,7 @@ import asyncio
 import copy
 import math
 import random
+import sys
 from matplotlib import pyplot as plt
 import numpy as np
 from nuscenes.eval.common.utils import Quaternion, quaternion_yaw
@@ -162,10 +163,13 @@ class MapTransform:
     def shift_layers(self, instance_list, correspondence_list, len_dict, layer_name, args,  patch_box):
         times = math.floor(len_dict[layer_name] * args[1])
         index_list = random.choices([i for i in range(len_dict[layer_name])], k=times)
+        r_xy = np.random.normal(0, 1, [times,2])
         
         for ind in index_list:
-            rx = random.uniform(-1*args[2], args[2])
-            ry = math.sqrt(1 - rx**2)        
+            # rx = random.uniform(-1*args[2], args[2])
+            # ry = math.sqrt(1 - pow(rx,2))
+            rx = r_xy[ind][0]
+            ry = r_xy[ind][1]        
             geom = affinity.translate(
                 instance_list[layer_name][ind], rx, ry)
 
@@ -985,6 +989,7 @@ def perturb_map(vector_map, trans_args, info, map_version, visual, trans_dic):
 
 
 def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range, sequential=False):
+    # if info['token'] == '1e0d1b76ea134c7db0592c4510f5e737':
     lidar2ego = np.eye(4)
     lidar2ego[:3, :3] = Quaternion(info['lidar2ego_rotation']).rotation_matrix
     lidar2ego[:3, 3] = info['lidar2ego_translation']
@@ -1035,13 +1040,17 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range, s
                                 del_div=[1, 1, None])
     info = perturb_map(vector_map, trans_args, info, 'annotation_1', visual, trans_dic)
     
-    # pertubation 2
+    # pertubation 2a
     trans_args = PerturbParameters(shi_ped=[1, 1, 1],
-                                   shi_div=[1, 1, 1],
-                                   shi_bou=[1, 1, 1])
-    info = perturb_map(vector_map, trans_args, info, 'annotation_2', visual, trans_dic)
+                                shi_div=[1, 1, 1],
+                                shi_bou=[1, 1, 1])
+    info = perturb_map(vector_map, trans_args, info, 'annotation_2a', visual, trans_dic)
     
-    # pertubation 3
+    # pertubation 2b
+    trans_args = PerturbParameters(noi_pat_gau=[1, None, [0, 5]])
+    info = perturb_map(vector_map, trans_args, info, 'annotation_2b', visual, trans_dic)
+    
+    # pertubation 3a
     trans_args = PerturbParameters(del_ped=[1, 0.5, None],
                                 add_ped=[1, 0.25, None],
                                 del_div=[1, 0.5, None],
@@ -1050,7 +1059,10 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range, s
                                 # Gaussian warping
                                 def_pat_gau=[1, None, [0, 0.1]],
                                 int_num=20)
-    info = perturb_map(vector_map, trans_args, info, 'annotation_3', visual, trans_dic)
+    info = perturb_map(vector_map, trans_args, info, 'annotation_3a', visual, trans_dic)
+
+    # pertubation 3b
+    # TODO
 
     # w loop
     # loop = asyncio.get_event_loop()                                              # Have a new event loop
@@ -1058,5 +1070,7 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range, s
     # results = loop.run_until_complete(looper)
 
     info['order'] = ['divider', 'ped_crossing', 'boundary']
-
+    
+    # sys.exit('DONE!')
+        
     return info
