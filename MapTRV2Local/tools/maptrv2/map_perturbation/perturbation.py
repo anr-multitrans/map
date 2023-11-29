@@ -160,7 +160,7 @@ class MapTransform:
 
         return instance_list, correspondence_list
 
-    def shift_layers(self, instance_list, correspondence_list, len_dict, layer_name, args,  patch_box):
+    def shift_layers(self, instance_list, correspondence_list, len_dict, layer_name, args, patch_box):
         times = math.floor(len_dict[layer_name] * args[1])
         index_list = random.choices([i for i in range(len_dict[layer_name])], k=times)
         r_xy = np.random.normal(0, 1, [times,2])
@@ -193,6 +193,41 @@ class MapTransform:
             else:
                 instance_list[layer_name][ind] = geom
 
+        return instance_list, correspondence_list
+
+
+    def zoom_layers(self, instance_list, correspondence_list, len_dict, layer_name, args, patch_box):
+        times = math.floor(len_dict[layer_name] * args[1])
+        index_list = random.choices([i for i in range(len_dict[layer_name])], k=times)
+        
+        new_ins_list = []
+        new_cor_list = []
+        for ind, ele in enumerate(instance_list[layer_name]):
+            if ind in index_list:
+                centroid = np.array(ele.centroid.coords)
+                mv = centroid / abs(np.max(centroid)) * args[2]
+                rx = mv[0][0]
+                ry = mv[0][1]       
+                geom = affinity.translate(ele, rx, ry)
+
+                geom = self.valid_geom(geom, [0,0,patch_box[2],patch_box[3]], 0)
+                
+                if geom is None:
+                    continue
+                
+                if geom.geom_type == 'MultiLineString':
+                    new_ins_list.append(ops.linemerge(geom))
+                    new_cor_list.append(correspondence_list[layer_name][ind])
+                else:
+                    new_ins_list.append(geom)
+                    new_cor_list.append(correspondence_list[layer_name][ind])
+            else:
+                new_ins_list.append(ele)
+                new_cor_list.append(correspondence_list[layer_name][ind])
+
+        instance_list[layer_name] = new_ins_list
+        correspondence_list[layer_name] = new_cor_list
+        
         return instance_list, correspondence_list
 
     def add_layers(self, instance_list, correspondence_list, len_dict, layer_name, args, patch_box, patch_angle):
@@ -813,6 +848,10 @@ class PerturbedVectorizedLocalMap(object):
             map_ins_dict, corr_dict = self.map_trans.add_layers(
                 map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.add_bou,  patch_box, patch_angle)
 
+        if trans_args.wid_bou[0]:
+            map_ins_dict, corr_dict = self.map_trans.zoom_layers(
+                map_ins_dict, corr_dict, len_dict, 'boundary', trans_args.wid_bou,  patch_box)
+
         if trans_args.aff_tra_pat[0] or trans_args.rot_pat[0] or trans_args.sca_pat[0] or trans_args.ske_pat[0] or trans_args.shi_pat[0]:
             map_ins_dict, corr_dict = self.map_trans.transfor_patch(
                 map_ins_dict, corr_dict, patch_box, trans_args)
@@ -838,6 +877,7 @@ class PerturbParameters():
                  # shift lane, shifted by offsets along each dimension[x, y]
                  shi_bou=[0, 0, [0, 0]],
                  add_bou=[0, 0, None],  # add boundray TODO
+                 wid_bou=[0, 0, None],
                  # patch perturbation
                  aff_tra_pat=[0, None, [1, 0, 0, 1, 0, 0]],  # affine_transform
                  rot_pat=[0, None, [0, [0, 0]]],  # rotate the patch
@@ -864,6 +904,7 @@ class PerturbParameters():
         self.del_bou = del_bou
         self.shi_bou = shi_bou
         self.add_bou = add_bou
+        self.wid_bou = wid_bou
         self.aff_tra_pat = aff_tra_pat
         self.rot_pat = rot_pat
         self.sca_pat = sca_pat
@@ -1011,9 +1052,6 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range, s
 
     vector_map = PerturbedVectorizedLocalMap(
         nusc_maps[location], map_explorer[location], patch_size)
-
-    if info['scene_token'] == '7626dde27d604ac28a0240bdd54eba7a':
-        print('bug')
     
     # ------peturbation------
     # visualization setting
@@ -1035,34 +1073,38 @@ def obtain_perturb_vectormap(nusc_maps, map_explorer, info, point_cloud_range, s
 
     # the pertubated map
     # w/o loop
-    # pertubation 1
-    trans_args = PerturbParameters(del_ped=[1, 1, None],
-                                del_div=[1, 1, None])
-    info = perturb_map(vector_map, trans_args, info, 'annotation_1', visual, trans_dic)
+    # # pertubation 1
+    # trans_args = PerturbParameters(del_ped=[1, 1, None],
+    #                             del_div=[1, 1, None])
+    # info = perturb_map(vector_map, trans_args, info, 'annotation_1', visual, trans_dic)
     
-    # pertubation 2a
-    trans_args = PerturbParameters(shi_ped=[1, 1, 1],
-                                shi_div=[1, 1, 1],
-                                shi_bou=[1, 1, 1])
-    info = perturb_map(vector_map, trans_args, info, 'annotation_2a', visual, trans_dic)
+    # # pertubation 2a
+    # trans_args = PerturbParameters(shi_ped=[1, 1, 1],
+    #                             shi_div=[1, 1, 1],
+    #                             shi_bou=[1, 1, 1])
+    # info = perturb_map(vector_map, trans_args, info, 'annotation_2a', visual, trans_dic)
     
-    # pertubation 2b
-    trans_args = PerturbParameters(noi_pat_gau=[1, None, [0, 5]])
-    info = perturb_map(vector_map, trans_args, info, 'annotation_2b', visual, trans_dic)
+    # # pertubation 2b
+    # trans_args = PerturbParameters(noi_pat_gau=[1, None, [0, 5]])
+    # info = perturb_map(vector_map, trans_args, info, 'annotation_2b', visual, trans_dic)
     
-    # pertubation 3a
-    trans_args = PerturbParameters(del_ped=[1, 0.5, None],
-                                add_ped=[1, 0.25, None],
-                                del_div=[1, 0.5, None],
-                                # trigonometric warping
-                                def_pat_tri=[1, None, [1., 1., 3.]],
-                                # Gaussian warping
-                                def_pat_gau=[1, None, [0, 0.1]],
-                                int_num=20)
-    info = perturb_map(vector_map, trans_args, info, 'annotation_3a', visual, trans_dic)
+    # # pertubation 3a
+    # trans_args = PerturbParameters(del_ped=[1, 0.5, None],
+    #                             add_ped=[1, 0.25, None],
+    #                             del_div=[1, 0.5, None],
+    #                             # trigonometric warping
+    #                             def_pat_tri=[1, None, [1., 1., 3.]],
+    #                             # Gaussian warping
+    #                             def_pat_gau=[1, None, [0, 0.1]],
+    #                             int_num=20)
+    # info = perturb_map(vector_map, trans_args, info, 'annotation_3a', visual, trans_dic)
 
     # pertubation 3b
     # TODO
+
+    # pertubation 4 - widen borders
+    trans_args = PerturbParameters(wid_bou=[1,1,1])
+    info = perturb_map(vector_map, trans_args, info, 'annotation_4', visual, trans_dic)
 
     # w loop
     # loop = asyncio.get_event_loop()                                              # Have a new event loop
