@@ -10,7 +10,6 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.patches import Arrow, Rectangle
 from nuscenes.map_expansion.bitmap import BitMap
-from nuscenes.map_expansion.map_api import NuScenesMap, NuScenesMapExplorer
 # Recommended style to use as the plots will show grids.
 plt.style.use('seaborn-whitegrid')
 
@@ -41,7 +40,7 @@ class RenderMap:
                               traffic_light='#7e772e')
 
         self.colors_plt = {'divider': '#808000',
-                           'ped_crossing': '#000080', 'boundary': '#008000'}
+                           'ped_crossing': '#000080', 'boundary': '#008000', 'centerline': 'y'}
 
         self.info = info
         self.map_api = vector_map.nusc_map

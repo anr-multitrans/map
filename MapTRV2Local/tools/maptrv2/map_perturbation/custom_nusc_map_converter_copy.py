@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 import sys
 from os import path as osp
 from typing import Tuple
@@ -219,8 +220,6 @@ def _fill_trainval_infos(nusc,
                          nusc_maps,
                          map_explorer,
                          train_scenes,
-                         val_scenes,
-                         test=False,
                          max_sweeps=10,
                          point_cloud_range=[-15.0, -30.0, -10.0, 15.0, 30.0, 10.0]):
     """Generate the train/val infos from the raw data.
@@ -243,7 +242,7 @@ def _fill_trainval_infos(nusc,
     for sample in mmcv.track_iter_progress(nusc.sample):
         map_location = nusc.get('log', nusc.get(
             'scene', sample['scene_token'])['log_token'])['location']
-
+        
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
         cs_record = nusc.get('calibrated_sensor',
@@ -253,7 +252,7 @@ def _fill_trainval_infos(nusc,
 
         mmcv.check_file_exist(lidar_path)
         can_bus = _get_can_bus_info(nusc, nusc_can_bus, sample)
-        ##
+        
         info = {
             'lidar_path': lidar_path,
             'token': sample['token'],
@@ -395,7 +394,7 @@ def create_nuscenes_infos(root_path,
             len(train_scenes), len(val_scenes)))
 
     train_nusc_infos, val_nusc_infos = _fill_trainval_infos(
-        nusc, nusc_can_bus, nusc_maps, map_explorer, train_scenes, val_scenes, test, max_sweeps=max_sweeps)
+        nusc, nusc_can_bus, nusc_maps, map_explorer, train_scenes, max_sweeps=max_sweeps)
 
     metadata = dict(version=version)
     if test:
@@ -466,9 +465,14 @@ if __name__ == '__main__':
     #     out_path=args.out_dir,
     #     can_bus_root_path=args.canbus,
     #     info_prefix=args.extra_tag,
-    #     version=test_version,
+    #     version=test_version, 
     #     max_sweeps=args.max_sweeps)
 
+    # Empty the visualisation folder
+    vis_path='/home/li/Documents/map/MapTRV2Local/tools/maptrv2/map_perturbation/visual/'
+    shutil.rmtree(vis_path)  
+    os.mkdir(vis_path) 
+    
     version = 'v1.0-mini'
     create_nuscenes_infos(
         root_path=args.root_path,
